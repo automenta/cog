@@ -151,14 +151,14 @@ public final class Cog {
             cle.reasonForward(2); // Run inference
 
             System.out.println("\nChecking derived knowledge:");
-            var dogAnimalLinkId = Link.id(Link.Type.INHERITANCE, List.of(dog.id(), animal.id()));
+            var dogAnimalLinkId = Link.id(Link.Type.INHERITANCE, List.of(dog.id, animal.id));
             cle.retrieveAtom(dogAnimalLinkId)
                     .ifPresentOrElse(
                             atom -> System.out.println(" -> Derived Dog->Animal: " + atom),
                             () -> System.out.println(" -> Derived Dog->Animal: Not found (Expected).")
                     );
 
-            var catClawsLinkId = Link.id(Link.Type.INHERITANCE, List.of(cat.id(), hasClaws.id()));
+            var catClawsLinkId = Link.id(Link.Type.INHERITANCE, List.of(cat.id, hasClaws.id));
             cle.retrieveAtom(catClawsLinkId)
                     .ifPresentOrElse(
                             atom -> System.out.println(" -> Derived Cat->HasClaws: " + atom),
@@ -174,8 +174,8 @@ public final class Cog {
             cle.learnLink(Link.Type.EVALUATION, Certainty.of(0.85, 10), 0.7, chasesPred, dog, ball);
 
             // Query: Evaluation(Chases, ?X, Ball) - What chases the ball?
-            Atom queryPattern = new Link(Link.Type.EVALUATION, List.of(chasesPred.id(), varX.id(), ball.id()), Certainty.UNKNOWN, null);
-            System.out.println("Query: " + queryPattern.id());
+            Atom queryPattern = new Link(Link.Type.EVALUATION, List.of(chasesPred.id, varX.id, ball.id), Certainty.UNKNOWN, null);
+            System.out.println("Query: " + queryPattern.id);
             var results = cle.query(queryPattern, 3);
             if (results.isEmpty()) {
                 System.out.println(" -> No results found.");
@@ -241,15 +241,15 @@ public final class Cog {
             // Goal: Agent At Location B -> HoldsAt(AtLocation(Self, LocationB))
             var goal = effectMove;
             // Boost goal importance
-            cle.retrieveAtom(goal.id()).ifPresent(g -> g.updateImportance(IMPORTANCE_BOOST_ON_GOAL_FOCUS, cle.iteration()));
+            cle.retrieveAtom(goal.id).ifPresent(g -> g.updateImportance(IMPORTANCE_BOOST_ON_GOAL_FOCUS, cle.iteration()));
 
-            System.out.println("\nPlanning to achieve goal: " + goal.id());
+            System.out.println("\nPlanning to achieve goal: " + goal.id);
             var planOpt = cle.plan(goal, 5, 3); // Max 5 actions, max 3 search depth for preconditions
 
             planOpt.ifPresentOrElse(
                     plan -> {
                         System.out.println("Plan Found:");
-                        plan.forEach(action -> System.out.println(" -> " + action.id()));
+                        plan.forEach(action -> System.out.println(" -> " + action.id));
                     },
                     () -> System.out.println("No plan found.")
             );
@@ -344,7 +344,7 @@ public final class Cog {
      * @return The existing or newly created VariableNode.
      */
     public Var getOrCreateVariable(String name) {
-        return mem.variable(name);
+        return mem.var(name);
     }
 
     /**
@@ -554,7 +554,7 @@ public final class Cog {
          */
         public Atom learnAtom(Atom atom) {
             final long currentTime = time.get();
-            final var atomId = atom.id();
+            final var atomId = atom.id;
 
             var result = atoms.compute(atomId, (id, existingAtom) -> {
                 if (existingAtom == null) {
@@ -619,13 +619,13 @@ public final class Cog {
         }
 
         /**
-         * Gets or creates a VariableNode.
+         * Gets or creates a variable
          */
-        public Var variable(String name) {
+        public Var var(String name) {
             var varId = Var.varID(name);
             return (Var) atoms.computeIfAbsent(varId, id -> {
                 var vn = new Var(name);
-                vn.importance(0.0, time.get()); // Variables have 0 STI, high LTI implied by protection
+                vn.importance(0.0, time.get()); // vars have 0 STI, high LTI implied by protection
                 vn.lti(1); // Ensure LTI is high
                 return vn;
             });
@@ -637,7 +637,7 @@ public final class Cog {
         public Link link(Link.Type type, Certainty certainty, double initialSTI, Time time, Atom... targets) {
             var targetIds = Arrays.stream(targets)
                     .filter(Objects::nonNull)
-                    .map(Atom::id)
+                    .map(atom -> atom.id)
                     .toList(); // Use List.of() or toList()
             return link(type, certainty, initialSTI, time, targetIds);
         }
@@ -674,9 +674,9 @@ public final class Cog {
          * Updates indices for a given link.
          */
         private void updateIndices(Link link) {
-            linksByType.get(link.type).add(link.id()); // Assumes type exists in map
+            linksByType.get(link.type).add(link.id); // Assumes type exists in map
             for (var targetId : link.targets) {
-                linksByTarget.computeIfAbsent(targetId, k -> new ConcurrentSkipListSet<>()).add(link.id());
+                linksByTarget.computeIfAbsent(targetId, k -> new ConcurrentSkipListSet<>()).add(link.id);
             }
         }
 
@@ -684,9 +684,9 @@ public final class Cog {
          * Removes indices for a given link.
          */
         private void removeIndices(Link link) {
-            Optional.ofNullable(linksByType.get(link.type)).ifPresent(set -> set.remove(link.id()));
+            Optional.ofNullable(linksByType.get(link.type)).ifPresent(set -> set.remove(link.id));
             for (var targetId : link.targets) {
-                Optional.ofNullable(linksByTarget.get(targetId)).ifPresent(set -> set.remove(link.id()));
+                Optional.ofNullable(linksByTarget.get(targetId)).ifPresent(set -> set.remove(link.id));
                 // Optional: Clean up empty target sets periodically?
                 // if (linksByTarget.containsKey(targetId) && linksByTarget.get(targetId).isEmpty()) { linksByTarget.remove(targetId); }
             }
@@ -768,7 +768,7 @@ public final class Cog {
                         // Add other protection logic? (e.g., part of active goal/plan - needs AgentController input)
 
                         if (!isProtected) {
-                            removeAtomInternal(atom.id()); // Use internal remove synchronized method
+                            removeAtomInternal(atom.id); // Use internal remove synchronized method
                             removedCount++;
                         }
                     } else {
@@ -911,7 +911,7 @@ public final class Cog {
          * Probabilistic Modus Ponens: (A, A->B) => Update B.
          */
         public Optional<Atom> modusPonens(Atom premiseA, Link implicationAB) {
-            if (premiseA == null || !isValidBinaryLink(implicationAB) || !implicationAB.targets.get(0).equals(premiseA.id())) {
+            if (premiseA == null || !isValidBinaryLink(implicationAB) || !implicationAB.targets.get(0).equals(premiseA.id)) {
                 return empty();
             }
 
@@ -1041,7 +1041,7 @@ public final class Cog {
                     Optional<?> resultOpt = empty();
                     // Ensure premises still exist and are valid before executing
                     var premisesValid = Arrays.stream(potential.premises)
-                            .allMatch(p -> atom(p.id()).isPresent());
+                            .allMatch(p -> atom(p.id).isPresent());
 
                     if (premisesValid) {
                         switch (potential.ruleType) {
@@ -1083,7 +1083,7 @@ public final class Cog {
         private List<Answer> backwardChainRecursive(Atom queryPattern, int depth, Bindings bindings, Set<String> visited) {
             // Apply current bindings to the query pattern
             var currentQuery = unify.substitute(queryPattern, bindings);
-            var visitedId = currentQuery.id() + bindings.hashCode(); // ID includes bindings state
+            var visitedId = currentQuery.id + bindings.hashCode(); // ID includes bindings state
 
             if (depth <= 0 || !visited.add(visitedId))
                 return Collections.emptyList(); // Depth limit or cycle detected
@@ -1092,9 +1092,9 @@ public final class Cog {
             final var nextDepth = depth - 1;
 
             // 1. Direct Match in KB (after substitution)
-            atom(currentQuery.id()).ifPresent(match -> {
+            atom(currentQuery.id).ifPresent(match -> {
                 if (match.certainty().confidence() > CERTAINTY_MIN_CONFIDENCE_FOR_VALID_EVIDENCE) {
-                    // Check if the concrete match from KB unifies with the potentially variable query
+                    // Check if the concrete match from KB unifies with the potentially var query
                     unify.unify(currentQuery, match, bindings)
                             .ifPresent(finalBindings -> results.add(new Answer(finalBindings, match)));
                 }
@@ -1270,15 +1270,15 @@ public final class Cog {
          */
         public Optional<List<Atom>> planToActionSequence(Atom goalPattern, int maxPlanDepth, int maxSearchDepth) {
             System.out.println("\n--- Inference: Planning ---");
-            System.out.println("Goal Pattern: " + goalPattern.id());
-            atom(goalPattern.id()).ifPresent(g -> g.updateImportance(IMPORTANCE_BOOST_ON_GOAL_FOCUS, mem.time.get()));
+            System.out.println("Goal Pattern: " + goalPattern.id);
+            atom(goalPattern.id).ifPresent(g -> g.updateImportance(IMPORTANCE_BOOST_ON_GOAL_FOCUS, mem.time.get()));
 
             // Use backward search from the goal
             return planRecursive(goalPattern, new LinkedList<>(), maxPlanDepth, maxSearchDepth, new HashSet<>());
         }
 
         private Optional<List<Atom>> planRecursive(Atom currentGoalPattern, LinkedList<Atom> currentPlan, int planDepthRemaining, int searchDepth, Set<String> visitedGoalPatterns) {
-            var goalPatternId = currentGoalPattern.id() + currentPlan.hashCode(); // State includes current plan context
+            var goalPatternId = currentGoalPattern.id + currentPlan.hashCode(); // State includes current plan context
             var indent = "  ".repeat(PLANNING_DEFAULT_MAX_PLAN_DEPTH - planDepthRemaining);
 
             if (planDepthRemaining <= 0 || !visitedGoalPatterns.add(goalPatternId)) {
@@ -1307,7 +1307,7 @@ public final class Cog {
                 // System.out.println(indent + "-> Considering Action: " + step.action().id() + " (Conf: " + String.format("%.3f", step.confidence()) + ")");
 
                 // Check if action is already in the current plan to avoid trivial loops
-                if (currentPlan.stream().anyMatch(a -> a.id().equals(step.action().id()))) {
+                if (currentPlan.stream().anyMatch(a -> a.id.equals(step.action().id))) {
                     continue;
                 }
 
@@ -1366,7 +1366,7 @@ public final class Cog {
                                     actionOpt.ifPresent(actionAtom -> {
                                         // Preconditions are the other elements in the sequence
                                         var preconditions = premiseLink.targets.stream()
-                                                .filter(id -> !id.equals(actionAtom.id()))
+                                                .filter(id -> !id.equals(actionAtom.id))
                                                 .map(mem::atom).filter(Optional::isPresent).map(Optional::get)
                                                 .map(precond -> unify.substitute(precond, bindings)) // Apply bindings from goal unification
                                                 .toList();
@@ -1462,7 +1462,7 @@ public final class Cog {
                 this.priority = Arrays.stream(premises)
                         .mapToDouble(p -> p.getCurrentImportance(currentTime) * p.certainty().confidence())
                         .reduce(1.0, (a, b) -> a * b);
-                this.signature = ruleType + ":" + Arrays.stream(premises).map(Atom::id).sorted().collect(Collectors.joining("|"));
+                this.signature = ruleType + ":" + Arrays.stream(premises).map(atom -> atom.id).sorted().collect(Collectors.joining("|"));
             }
 
             String getSignature() {
@@ -1471,7 +1471,7 @@ public final class Cog {
 
             String getSignatureSwapped() { // For symmetric rules like Deduction A->B->C vs C<-B<-A
                 if (premises.length == 2) {
-                    return ruleType + ":" + Stream.of(premises[1].id(), premises[0].id()).sorted().collect(Collectors.joining("|"));
+                    return ruleType + ":" + Stream.of(premises[1].id, premises[0].id).sorted().collect(Collectors.joining("|"));
                 }
                 return signature;
             }
@@ -1504,8 +1504,8 @@ public final class Cog {
         public void runLoop(Game env, Atom goal, int maxCycles) {
             System.out.println("\n--- Agent: Starting Run ---");
             this.currentGoalAtom = goal;
-            mem.atom(goal.id()).ifPresent(g -> g.updateImportance(IMPORTANCE_BOOST_ON_GOAL_FOCUS, iteration()));
-            System.out.println("Initial Goal: " + currentGoalAtom.id() + " " + currentGoalAtom.certainty());
+            mem.atom(goal.id).ifPresent(g -> g.updateImportance(IMPORTANCE_BOOST_ON_GOAL_FOCUS, iteration()));
+            System.out.println("Initial Goal: " + currentGoalAtom.id + " " + currentGoalAtom.certainty());
 
             // Initial perception
             var initialPerception = env.perceive();
@@ -1515,7 +1515,7 @@ public final class Cog {
                 var currentTime = iteration(); // Use shared logical time
                 System.out.printf("\n--- Agent Cycle %d (Time: %d) ---%n", cycle + 1, currentTime);
                 if (previousStateAtom != null) {
-                    System.out.println("Current State Atom: " + previousStateAtom.id());
+                    System.out.println("Current State Atom: " + previousStateAtom.id);
                     // Optional: Display current state details
                     // kb.getLinksWithTarget(previousStateAtom.id())
                     //    .filter(l -> l.type() == Link.Type.MEMBER) // Assuming state composed of MEMBER links
@@ -1537,7 +1537,7 @@ public final class Cog {
                     // Optional: decay importance or take other idle action?
                 } else {
                     lastActionAtom = selectedActionOpt.get();
-                    System.out.println("Agent: Selected Action: " + lastActionAtom.id());
+                    System.out.println("Agent: Selected Action: " + lastActionAtom.id);
 
                     // 3. Execute Action
                     var actionResult = env.executeAction(lastActionAtom);
@@ -1554,7 +1554,7 @@ public final class Cog {
 
                 // 6. Goal Check
                 if (checkGoalAchieved()) {
-                    System.out.println("*** Agent: Goal Achieved! (" + currentGoalAtom.id() + ") ***");
+                    System.out.println("*** Agent: Goal Achieved! (" + currentGoalAtom.id + ") ***");
                     break; // Terminate loop on goal achievement
                 }
 
@@ -1593,11 +1593,11 @@ public final class Cog {
                     // Filter for relevant state atoms (e.g., HOLDS_AT links, specific EVALUATION links)
                     if (learnedAtom instanceof Link link) {
                         if (link.type == Link.Type.HOLDS_AT) {
-                            presentFluentIds.add(learnedAtom.id());
+                            presentFluentIds.add(learnedAtom.id);
                         }
                     } else {
                         if (learnedAtom instanceof Node node && node.name.startsWith("State:")) { // Or just nodes representing state
-                            presentFluentIds.add(learnedAtom.id());
+                            presentFluentIds.add(learnedAtom.id);
                         }
                     }
                     // Add other conditions as needed based on state representation conventions
@@ -1639,11 +1639,11 @@ public final class Cog {
             if (planOpt.isPresent() && !planOpt.get().isEmpty()) {
                 var firstActionInPlan = planOpt.get().get(0); // Get the first action recommended by the plan
                 // Check if the planned action is actually available now
-                if (availableActions.stream().anyMatch(a -> a.id().equals(firstActionInPlan.id()))) {
-                    System.out.println("Agent: Selecting action from plan: " + firstActionInPlan.id());
+                if (availableActions.stream().anyMatch(a -> a.id.equals(firstActionInPlan.id))) {
+                    System.out.println("Agent: Selecting action from plan: " + firstActionInPlan.id);
                     return Optional.of(firstActionInPlan);
                 } else {
-                    System.out.println("Agent: Planned action " + firstActionInPlan.id() + " not available. Evaluating alternatives.");
+                    System.out.println("Agent: Planned action " + firstActionInPlan.id + " not available. Evaluating alternatives.");
                 }
             } else {
                 System.out.println("Agent: Planning failed or yielded empty plan.");
@@ -1657,7 +1657,7 @@ public final class Cog {
 
                 availableActions.parallelStream().forEach(action -> {
                     // Query the estimated utility: Inheritance(Action, GoodAction)
-                    var utilityQuery = new Link(Link.Type.INHERITANCE, List.of(action.id(), goodActionNode.id()), Certainty.UNKNOWN, null);
+                    var utilityQuery = new Link(Link.Type.INHERITANCE, List.of(action.id, goodActionNode.id), Certainty.UNKNOWN, null);
                     var results = query(utilityQuery, 2); // Shallow search for utility
 
                     var utility = results.stream()
@@ -1677,7 +1677,7 @@ public final class Cog {
 
             if (bestActionEntry.isPresent()) {
                 System.out.printf("Agent: Selecting action by max utility: %s (Utility: %.3f)%n",
-                        bestActionEntry.get().getKey().id(), bestActionEntry.get().getValue());
+                        bestActionEntry.get().getKey().id, bestActionEntry.get().getValue());
                 return Optional.of(bestActionEntry.get().getKey());
             }
 
@@ -1723,10 +1723,10 @@ public final class Cog {
                 // Evidence strength based on reward sign, count based on learning rate
                 var utilityEvidence = Certainty.of(reward > 0 ? 1.0 : 0.0, AGENT_DEFAULT_LEARNING_COUNT);
                 if (Math.abs(reward) > 0.01) { // Only update utility if reward is significant
-                    var utilityLink = new Link(Link.Type.INHERITANCE, List.of(lastActionAtom.id(), goodActionNode.id()), utilityEvidence, null);
+                    var utilityLink = new Link(Link.Type.INHERITANCE, List.of(lastActionAtom.id, goodActionNode.id), utilityEvidence, null);
                     utilityLink.importance(0.7, currentTime);
                     var learnedUtility = mem.learnAtom(utilityLink); // Learn/revise the utility link
-                    System.out.printf("  Learn: Action-Utility Update %s -> %s%n", learnedUtility.id(), learnedUtility.certainty());
+                    System.out.printf("  Learn: Action-Utility Update %s -> %s%n", learnedUtility.id, learnedUtility.certainty());
                 }
             }
         }
@@ -1760,7 +1760,7 @@ public final class Cog {
             }
         }
 
-        private final String id;
+        public final String id;
 
         private Certainty certainty; // Mutable certainty
 
@@ -1774,10 +1774,6 @@ public final class Cog {
             this.id = Objects.requireNonNull(id);
             this.certainty = Objects.requireNonNull(certainty);
             // Importance initialized later via initializeImportance or implicitly
-        }
-
-        public final String id() {
-            return id;
         }
 
         public final Certainty certainty() {
@@ -1917,9 +1913,10 @@ public final class Cog {
             this.name = name;
         }
 
+        /** Use <> for clarity */
         public static String id(String name) {
             return "N<" + name + ">";
-        } // Use <> for clarity
+        }
 
         @Override
         public Atom withCertainty(Certainty newCertainty) {
@@ -1938,15 +1935,16 @@ public final class Cog {
 
     /**
      * Variable Node: Special Node type used in patterns and rules (HOL).
+     * certainty=unknown, ID includes prefix
      * TODO consider '$var' syntax
      */
     public static final class Var extends Node {
         public Var(String name) {
-            // Variables have unknown certainty, ID includes prefix
-            super(VARIABLE_PREFIX + name, Certainty.UNKNOWN);
-            // Importance handled by KB (usually protected)
+            super(VARIABLE_PREFIX + name, Certainty.UNKNOWN); // Importance handled by KB (usually protected)
         }
 
+        public static final String EMPTY = varID("");
+        
         public static String varID(String name) {
             return "V<" + VARIABLE_PREFIX + name + ">";
         }
@@ -1960,7 +1958,7 @@ public final class Cog {
         @Override
         public String toString() {
             return name;
-        } // Just show the variable name
+        }
     }
 
     /**
@@ -1974,7 +1972,7 @@ public final class Cog {
         public Link(Type type, List<String> targets, Certainty certainty, Time time) {
             super(id(type, targets), certainty);
             this.type = Objects.requireNonNull(type);
-            this.targets = List.copyOf(targets); // Ensure immutable list
+            this.targets = List.copyOf(targets); // Ensure immutable list TODO avoid unnecessary copies
             this.time = time;
         }
 
@@ -1997,11 +1995,10 @@ public final class Cog {
         @Override
         public Atom withCertainty(Certainty newCertainty) {
             //TODO if newCertainty is equal, do we need a new instance?
-            var newLink = new Link(type, targets, newCertainty, time);
-            // Copy importance state
-            newLink.importance(sti(), lastAccessTime());
-            newLink.lti(lti());
-            return newLink;
+            var l = new Link(type, targets, newCertainty, time);
+            l.importance(sti(), lastAccessTime()); // Copy importance state
+            l.lti(lti());
+            return l;
         }
 
         @Override
@@ -2039,8 +2036,8 @@ public final class Cog {
 
             public final boolean commutative;
 
-            Type(boolean orderIndependent) {
-                this.commutative = orderIndependent;
+            Type(boolean commutative) {
+                this.commutative = commutative;
             }
         }
     }
@@ -2230,7 +2227,7 @@ public final class Cog {
             }
             if (map.containsValue(varId)) { // Trying to bind X to Y where Y is already bound to Z
                 // Check for cycles or inconsistencies: If valueId is a variable already bound to something else.
-                if (valueId.startsWith(Var.varID(""))) {
+                if (valueId.startsWith(Var.EMPTY)) {
                     var mv = map.get(valueId);
                     if (mv!=null && !mv.equals(varId)) return empty();
                 }
@@ -2290,24 +2287,25 @@ public final class Cog {
         /**
          * Unifies two Atoms, returning updated bindings if successful.
          */
-        public Optional<Bindings> unify(Atom pattern, Atom instance, Bindings initialBindings) {
+        public Optional<Bindings> unify(Atom pattern, Atom instance, Bindings init) {
             // Dereference variables in both pattern and instance based on initial bindings
-            var p = substitute(pattern, initialBindings);
-            var i = substitute(instance, initialBindings);
+            var p = substitute(pattern, init);
+            var i = substitute(instance, init);
 
-            if (p instanceof Var varP) {
-                return initialBindings.extend(varP.id(), i.id());
-            }
-            if (i instanceof Var varI) {
-                return initialBindings.extend(varI.id(), p.id());
-            }
+            if (p instanceof Var varP)
+                return init.extend(varP.id, i.id);
+            
+            if (i instanceof Var varI)
+                return init.extend(varI.id, p.id);
+            
 
             // Must be same Atom type (Node or Link)
-            if (p.getClass() != i.getClass()) return empty();
+            if (p.getClass() != i.getClass()) 
+                return empty();
 
             if (p instanceof Node nodeP && i instanceof Node nodeI) {
                 // Nodes unify only if they are identical
-                return nodeP.id().equals(nodeI.id()) ? Optional.of(initialBindings) : empty();
+                return nodeP.id.equals(nodeI.id) ? Optional.of(init) : empty();
             }
 
             if (p instanceof Link linkP && i instanceof Link linkI) {
@@ -2316,7 +2314,7 @@ public final class Cog {
                     return empty();
                 }
 
-                var currentBindings = initialBindings;
+                var currentBindings = init;
                 for (var j = 0; j < linkP.targets.size(); j++) {
                     var targetPId = linkP.targets.get(j);
                     var targetIId = linkI.targets.get(j);
@@ -2343,10 +2341,10 @@ public final class Cog {
 
             if (pId.equals(iId)) return Optional.of(bindings);
 
-            if (pId.startsWith(Var.varID(""))) {
+            if (pId.startsWith(Var.EMPTY)) {
                 return bindings.extend(pId, iId);
             }
-            if (iId.startsWith(Var.varID(""))) {
+            if (iId.startsWith(Var.EMPTY)) {
                 return bindings.extend(iId, pId);
             }
 
@@ -2373,11 +2371,11 @@ public final class Cog {
 
             if (pattern instanceof Var var) {
                 // Follow the binding chain until a non-variable or unbound variable is found
-                var currentVarId = var.id();
+                var currentVarId = var.id;
                 var boundValueId = bindings.getBinding(currentVarId).orElse(null);
                 Set<String> visited = new HashSet<>();
                 while (boundValueId != null && visited.add(currentVarId)) {
-                    if (boundValueId.startsWith(Var.varID(""))) {
+                    if (boundValueId.startsWith(Var.EMPTY)) {
                         currentVarId = boundValueId;
                         boundValueId = bindings.getBinding(currentVarId).orElse(null);
                     } else {
@@ -2399,7 +2397,7 @@ public final class Cog {
                     String newTargetId;
                     if (targetPattern != null) {
                         var substitutedTarget = substitute(targetPattern, bindings);
-                        newTargetId = substitutedTarget.id();
+                        newTargetId = substitutedTarget.id;
                         if (!targetId.equals(newTargetId)) changed = true;
                     } else {
                         // If target doesn't exist, maybe it's a variable? Check bindings directly.
@@ -2430,7 +2428,7 @@ public final class Cog {
             var boundValueId = bindings.getBinding(currentId).orElse(null);
             Set<String> visited = new HashSet<>();
             while (boundValueId != null && visited.add(currentId)) {
-                if (boundValueId.startsWith(Var.varID(""))) {
+                if (boundValueId.startsWith(Var.EMPTY)) {
                     currentId = boundValueId;
                     boundValueId = bindings.getBinding(currentId).orElse(null);
                 } else {
@@ -2538,7 +2536,7 @@ public final class Cog {
                     else reward -= 0.2;
                     break;
                 default:
-                    System.err.println("WARN: Unknown action executed in GridWorld: " + actionSchema.id());
+                    System.err.println("WARN: Unknown action executed in GridWorld: " + actionSchema.id);
                     reward -= 1.0;
                     break;
             }
