@@ -16,12 +16,12 @@ import java.util.stream.Stream;
 import static java.util.Optional.empty;
 
 /**
- * # Cognitive Logic Engine (CLE) - Version 2.0 Synthesis
- * <p>
+ * Cog - Cognitive Logic Engine (CLE) - Derived from OpenCog and NARS
+ *
  * Represents a significantly enhanced and refactored Probabilistic Logic Network implementation,
  * designed for general intelligence research, emphasizing adaptability, autonomy, and cognitive power.
  * It recursively integrates its components and knowledge using its own representational framework ("dogfooding").
- * <p>
+
  * ## Core Design Principles:
  * - **Unified Representation:** All concepts, relations, events, goals, plans, and even system states
  * are represented uniformly as `Atom` instances (Nodes or Links).
@@ -95,13 +95,13 @@ public final class Cog {
     private static final double AGENT_RANDOM_ACTION_PROBABILITY = 0.05; // Epsilon for exploration
 
     // Naming Conventions
-    private static final String VARIABLE_PREFIX = "?"; // SPARQL-like prefix for variables
+    private static final String VAR_PREFIX = "?"; // SPARQL-like prefix for vars
 
     // --- Core Components ---
     private final Memory mem;
-    private final Infer inference;
+    private final Infer infer;
     private final Agent agent;
-    private final ScheduledExecutorService scheduler;
+    private final ScheduledExecutorService exe;
 
     /**
      * logical, monotonic time for internal ordering/recency
@@ -111,16 +111,16 @@ public final class Cog {
     // --- Constructor ---
     public Cog() {
         this.mem = new Memory(this::iteration);
-        this.inference = new Infer(this.mem);
+        this.infer = new Infer(this.mem);
         this.agent = new Agent();
 
         // Schedule periodic maintenance (forgetting, importance decay)
-        this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        this.exe = Executors.newSingleThreadScheduledExecutor(r -> {
             var t = new Thread(r, "CLE-Maintenance");
             t.setDaemon(true);
             return t;
         });
-        scheduler.scheduleAtFixedRate(this::performMaintenance,
+        exe.scheduleAtFixedRate(this::performMaintenance,
                 FORGETTING_CHECK_INTERVAL_MS, FORGETTING_CHECK_INTERVAL_MS, TimeUnit.MILLISECONDS);
 
         System.out.println("Cognitive Logic Engine Initialized.");
@@ -138,12 +138,12 @@ public final class Cog {
 
             // --- 1. Basic Knowledge & Forward Chaining ---
             System.out.println("\n[1] Basic Knowledge & Forward Chaining:");
-            var cat = cle.getOrCreateNode("Cat");
-            var mammal = cle.getOrCreateNode("Mammal");
-            var animal = cle.getOrCreateNode("Animal");
-            var dog = cle.getOrCreateNode("Dog");
-            var predator = cle.getOrCreateNode("Predator");
-            var hasClaws = cle.getOrCreateNode("HasClaws");
+            var cat = cle.node("Cat");
+            var mammal = cle.node("Mammal");
+            var animal = cle.node("Animal");
+            var dog = cle.node("Dog");
+            var predator = cle.node("Predator");
+            var hasClaws = cle.node("HasClaws");
 
             cle.learn(Link.Type.INHERITANCE, Truth.of(0.95, 20), 0.8, cat, mammal);
             cle.learn(Link.Type.INHERITANCE, Truth.of(0.98, 50), 0.9, mammal, animal);
@@ -170,9 +170,9 @@ public final class Cog {
 
             // --- 2. Backward Chaining Query & Unification ---
             System.out.println("\n[2] Backward Chaining & Unification:");
-            var varX = cle.getOrCreateVariable("X");
-            var chasesPred = cle.getOrCreateNode("Predicate:Chases"); // Use prefix convention
-            var ball = cle.getOrCreateNode("Ball");
+            var varX = cle.var("X");
+            var chasesPred = cle.node("Predicate:Chases"); // Use prefix convention
+            var ball = cle.node("Ball");
             // Define 'Dog chases Ball' using an Evaluation link: Evaluation(Chases, Dog, Ball)
             cle.learn(Link.Type.EVALUATION, Truth.of(0.85, 10), 0.7, chasesPred, dog, ball);
 
@@ -188,28 +188,28 @@ public final class Cog {
 
             // --- 3. Temporal Logic & Planning ---
             System.out.println("\n[3] Temporal Logic & Planning:");
-            var agentNode = cle.getOrCreateNode("Self"); // Standard node for the agent
-            var key = cle.getOrCreateNode("Key");
-            var door = cle.getOrCreateNode("Door");
-            var locationA = cle.getOrCreateNode("LocationA");
-            var locationB = cle.getOrCreateNode("LocationB");
-            var hasKeyFluent = cle.getOrCreateNode("Fluent:HasKey");
-            var doorOpenFluent = cle.getOrCreateNode("Fluent:DoorOpen");
-            var atLocationPred = cle.getOrCreateNode("Predicate:AtLocation");
-            var pickupAction = cle.getOrCreateNode("Action:PickupKey");
-            var openAction = cle.getOrCreateNode("Action:OpenDoor");
-            var moveToBAction = cle.getOrCreateNode("Action:MoveToB");
+            var agentNode = cle.node("Self"); // Standard node for the agent
+            var key = cle.node("Key");
+            var door = cle.node("Door");
+            var locationA = cle.node("LocationA");
+            var locationB = cle.node("LocationB");
+            var hasKeyFluent = cle.node("Fluent:HasKey");
+            var doorOpenFluent = cle.node("Fluent:DoorOpen");
+            var atLocationPred = cle.node("Predicate:AtLocation");
+            var pickupAction = cle.node("Action:PickupKey");
+            var openAction = cle.node("Action:OpenDoor");
+            var moveToBAction = cle.node("Action:MoveToB");
 
             // Initial State (Time = 0 assumed for simplicity in setup)
             var t0 = cle.iteration(); // Or cle.incrementLogicalTime();
             // HoldsAt(Predicate:AtLocation(Self, LocationA), T0)
-            var agentAtA = cle.learn(Link.Type.HOLDS_AT, Truth.TRUE, 1.0, cle.timePoint(t0),
+            var agentAtA = cle.learn(Link.Type.HOLDS_AT, Truth.TRUE, 1.0, Time.at(t0),
                     cle.learn(Link.Type.EVALUATION, Truth.TRUE, 1.0, atLocationPred, agentNode, locationA));
             // NOT HoldsAt(Fluent:HasKey(Self), T0) - Represented by low strength/confidence
-            var notHasKey = cle.learn(Link.Type.HOLDS_AT, Truth.FALSE, 1.0, cle.timePoint(t0),
+            var notHasKey = cle.learn(Link.Type.HOLDS_AT, Truth.FALSE, 1.0, Time.at(t0),
                     cle.learn(Link.Type.EVALUATION, Truth.TRUE, 1.0, hasKeyFluent, agentNode)); // Evaluation represents the state itself
             // NOT HoldsAt(Fluent:DoorOpen(Door), T0)
-            var notDoorOpen = cle.learn(Link.Type.HOLDS_AT, Truth.FALSE, 1.0, cle.timePoint(t0),
+            var notDoorOpen = cle.learn(Link.Type.HOLDS_AT, Truth.FALSE, 1.0, Time.at(t0),
                     cle.learn(Link.Type.EVALUATION, Truth.TRUE, 1.0, doorOpenFluent, door));
 
             // Rules (Simplified - Using Predictive Implication for planning effects)
@@ -220,7 +220,7 @@ public final class Cog {
                     cle.learn(Link.Type.EVALUATION, Truth.TRUE, 1.0, hasKeyFluent, agentNode));
             // Rule: Sequence(Precond, Action) => Effect [Time: duration]
             var pickupSeq = cle.learn(Link.Type.SEQUENCE, Truth.TRUE, 0.9, precondPickup, pickupAction);
-            cle.learn(Link.Type.PREDICTIVE_IMPLICATION, Truth.of(0.95, 10), 0.9, cle.duration(100), pickupSeq, effectPickup);
+            cle.learn(Link.Type.PREDICTIVE_IMPLICATION, Truth.of(0.95, 10), 0.9, Time.range(100), pickupSeq, effectPickup);
 
             // Precondition: HoldsAt(HasKey(Self))
             var precondOpen = effectPickup; // Use the effect of the previous action's potential outcome
@@ -229,7 +229,7 @@ public final class Cog {
                     cle.learn(Link.Type.EVALUATION, Truth.TRUE, 1.0, doorOpenFluent, door));
             // Rule: Sequence(Precond, Action) => Effect
             var openSeq = cle.learn(Link.Type.SEQUENCE, Truth.TRUE, 0.9, precondOpen, openAction);
-            cle.learn(Link.Type.PREDICTIVE_IMPLICATION, Truth.of(0.9, 10), 0.9, cle.duration(200), openSeq, effectOpen);
+            cle.learn(Link.Type.PREDICTIVE_IMPLICATION, Truth.of(0.9, 10), 0.9, Time.range(200), openSeq, effectOpen);
 
             // Precondition: HoldsAt(DoorOpen(Door))
             var precondMove = effectOpen;
@@ -238,7 +238,7 @@ public final class Cog {
                     cle.learn(Link.Type.EVALUATION, Truth.TRUE, 1.0, atLocationPred, agentNode, locationB));
             // Rule: Sequence(Precond, Action) => Effect
             var moveSeq = cle.learn(Link.Type.SEQUENCE, Truth.TRUE, 0.9, precondMove, moveToBAction);
-            cle.learn(Link.Type.PREDICTIVE_IMPLICATION, Truth.of(0.98, 10), 0.9, cle.duration(300), moveSeq, effectMove);
+            cle.learn(Link.Type.PREDICTIVE_IMPLICATION, Truth.of(0.98, 10), 0.9, Time.range(300), moveSeq, effectMove);
 
 
             // Goal: Agent At Location B -> HoldsAt(AtLocation(Self, LocationB))
@@ -260,7 +260,7 @@ public final class Cog {
             // --- 4. Agent Simulation (Simple Grid World) ---
             System.out.println("\n[4] Agent Simulation (Basic Grid World):");
             var gridWorld = new BasicGridWorld(cle, 4, 2, 2); // 4x4 grid, goal at (2,2)
-            var goalLocationNode = cle.getOrCreateNode("Pos_2_2");
+            var goalLocationNode = cle.node("Pos_2_2");
             var agentAtPred = precondPickup; //???
             Atom goalState = cle.learn(Link.Type.HOLDS_AT, Truth.TRUE, 1.0,
                     cle.learn(Link.Type.EVALUATION, Truth.TRUE, 1.0, agentAtPred, agentNode, goalLocationNode));
@@ -328,7 +328,7 @@ public final class Cog {
      * @param name The conceptual name of the node.
      * @return The existing or newly created Node.
      */
-    public Node getOrCreateNode(String name) {
+    public Node node(String name) {
         return mem.node(name, Truth.UNKNOWN, IMPORTANCE_INITIAL_STI);
     }
 
@@ -340,62 +340,29 @@ public final class Cog {
      * @param initialSTI Initial Short-Term Importance.
      * @return The existing or newly created Node.
      */
-    public Node getOrCreateNode(String name, Truth certainty, double initialSTI) {
+    public Node node(String name, Truth certainty, double initialSTI) {
         return mem.node(name, certainty, initialSTI);
     }
 
     /**
-     * Gets or creates a Variable Node Atom. Variables are typically protected from forgetting.
-     *
-     * @param name The variable name (without prefix).
-     * @return The existing or newly created VariableNode.
+     * Gets or creates a Var, which are typically protected from forgetting.
+     * @param name The var name (without prefix).
+     * @return The existing or newly created Var.
      */
-    public Var getOrCreateVariable(String name) {
+    public Var var(String name) {
         return mem.var(name);
     }
 
     /**
-     * Creates a TimeSpec representing a specific time point.
-     */
-    public Time timePoint(long time) {
-        return Time.at(time);
-    }
-
-    /**
-     * Creates a TimeSpec representing a time interval.
-     */
-    public Time timeInterval(long start, long end) {
-        return Time.between(start, end);
-    }
-
-    /**
-     * Creates a TimeSpec representing a relative duration.
-     */
-    public Time duration(long duration) {
-        return Time.range(duration);
-    }
-
-    /**
      * Creates and learns a Link Atom connecting target Atoms.
-     *
-     * @param type       The type of relationship.
-     * @param certainty  The initial certainty of the link.
-     * @param initialSTI Initial Short-Term Importance.
-     * @param targets    The target Atoms being linked.
      * @return The learned Link Atom.
      */
     public Link learn(Link.Type type, Truth certainty, double initialSTI, Atom... targets) {
-        return mem.link(type, certainty, initialSTI, null, targets);
+        return learn(type, certainty, initialSTI, null, targets);
     }
 
     /**
      * Creates and learns a Link Atom with an associated TimeSpec.
-     *
-     * @param type       The type of relationship.
-     * @param certainty  The initial certainty of the link.
-     * @param initialSTI Initial Short-Term Importance.
-     * @param time       The temporal specification.
-     * @param targets    The target Atoms being linked.
      * @return The learned Link Atom.
      */
     public Link learn(Link.Type type, Truth certainty, double initialSTI, Time time, Atom... targets) {
@@ -436,19 +403,19 @@ public final class Cog {
      * @param maxSteps The maximum number of inference batches to perform.
      */
     public void reasonForward(int maxSteps) {
-        inference.forwardChain(maxSteps);
+        infer.forwardChain(maxSteps);
     }
 
     /**
      * Queries the knowledge base using backward chaining to determine the certainty of a pattern Atom.
-     * Supports variables and unification.
+     * Supports vars and unification.
      *
-     * @param queryPattern The Atom pattern to query (can contain VariableNodes).
+     * @param queryPattern The Atom pattern to query (can contain Var's).
      * @param maxDepth     Maximum recursion depth for the search.
      * @return A list of QueryResult records, each containing bind and the inferred Atom matching the query.
      */
     public List<Answer> query(Atom queryPattern, int maxDepth) {
-        return inference.backwardChain(queryPattern, maxDepth);
+        return infer.backwardChain(queryPattern, maxDepth);
     }
 
     /**
@@ -461,7 +428,7 @@ public final class Cog {
      * @return An Optional containing a list of action Atoms representing the plan, or empty if no plan found.
      */
     public Optional<List<Atom>> plan(Atom goalPattern, int maxPlanDepth, int maxSearchDepth) {
-        return inference.planToActionSequence(goalPattern, maxPlanDepth, maxSearchDepth);
+        return infer.planToActionSequence(goalPattern, maxPlanDepth, maxSearchDepth);
     }
 
     /**
@@ -486,13 +453,13 @@ public final class Cog {
      * Shuts down the background maintenance scheduler.
      */
     public void shutdown() {
-        scheduler.shutdown();
+        exe.shutdown();
         try {
-            if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                scheduler.shutdownNow();
+            if (!exe.awaitTermination(5, TimeUnit.SECONDS)) {
+                exe.shutdownNow();
             }
         } catch (InterruptedException e) {
-            scheduler.shutdownNow();
+            exe.shutdownNow();
             Thread.currentThread().interrupt();
         }
         System.out.println("Cognitive Logic Engine scheduler shut down.");
@@ -533,17 +500,16 @@ public final class Cog {
         public Memory(Supplier<Long> time) {
             this.time = time;
             // Pre-populate link type index map for efficiency
-            for (var type : Link.Type.values()) {
+            for (var type : Link.Type.values())
                 linksByType.put(type, new ConcurrentSkipListSet<>());
-            }
         }
 
         /**
          * Adds or updates an Atom, handling revision, importance, and indexing.
          */
         public <A extends Atom> A learn(A atom) {
-            final long currentTime = time.get();
-            final var atomId = atom.id;
+            long currentTime = time.get();
+            var atomId = atom.id;
 
             var result = atoms.compute(atomId, (id, existingAtom) -> {
                 if (existingAtom == null) {
@@ -584,11 +550,20 @@ public final class Cog {
          * Retrieves an Atom by ID, boosting its importance.
          */
         public Optional<Atom> atom(String id) {
-            var atom = atoms.get(id);
-            if (atom != null) {
-                atom.updateImportance(IMPORTANCE_BOOST_ON_ACCESS, time.get());
-            }
+            var atom = _atom(id);
             return Optional.ofNullable(atom);
+        }
+
+        private @Nullable Atom _atom(String id) {
+            var atom = atoms.get(id);
+            if (atom != null)
+                atom.updateImportance(IMPORTANCE_BOOST_ON_ACCESS, time.get());
+            return atom;
+        }
+
+        public final Atom atomOrElse(String id, Atom orElse) {
+            var a = _atom(id);
+            return a==null ? orElse : a;
         }
 
         /**
@@ -603,11 +578,11 @@ public final class Cog {
         }
 
         public Node node(String name) {
-            return (Node) atom(Node.id(name)).orElse(null);
+            return (Node) _atom(Node.id(name));
         }
 
         /**
-         * Gets or creates a variable
+         * Gets or creates a vars
          */
         public Var var(String name) {
             var varId = Var.varID(name);
@@ -686,12 +661,7 @@ public final class Cog {
          */
         public Stream<Link> links(Link.Type type) {
             var links = linksByType.get(type);
-            return links.isEmpty() ? Stream.empty() : links
-                    .stream()
-                    .map(this::atom) // Use retrieveAtom to boost importance
-                    .filter(Optional::isPresent).map(Optional::get)
-                    .filter(Link.class::isInstance)
-                    .map(Link.class::cast);
+            return links.isEmpty() ? Stream.empty() : _links(links);
         }
 
         /**
@@ -699,10 +669,13 @@ public final class Cog {
          */
         public Stream<Link> linksWithTarget(String targetId) {
             var links = linksByTarget.get(targetId);
-            return links.isEmpty() ? Stream.empty() : links
+            return links.isEmpty() ? Stream.empty() : _links(links);
+        }
+
+        private Stream<Link> _links(ConcurrentSkipListSet<String> links) {
+            return links
                     .stream()
-                    .map(this::atom) // Boost importance
-                    .filter(Optional::isPresent).map(Optional::get)
+                    .map(this::_atom).filter(Objects::nonNull) // Boost importance
                     .filter(Link.class::isInstance)
                     .map(Link.class::cast);
         }
@@ -1338,7 +1311,7 @@ public final class Cog {
                                 // Case 1: Premise is Sequence(State..., Action)
                                 if (premiseAtom instanceof Link premiseLink && premiseLink.type == Link.Type.SEQUENCE) {
                                     var actionOpt = premiseLink.targets.stream()
-                                            .map(mem::atom).filter(Optional::isPresent).map(Optional::get)
+                                            .map(mem::_atom).filter(Objects::nonNull)
                                             .filter(this::isActionAtom) // Find the action within the sequence
                                             .findFirst();
 
@@ -1346,7 +1319,7 @@ public final class Cog {
                                         // Preconditions are the other elements in the sequence
                                         var preconditions = premiseLink.targets.stream()
                                                 .filter(id -> !id.equals(actionAtom.id))
-                                                .map(mem::atom).filter(Optional::isPresent).map(Optional::get)
+                                                .map(mem::_atom).filter(Objects::nonNull)
                                                 .map(precond -> unify.substitute(precond, bind)) // Apply bind from goal unification
                                                 .toList();
                                         var confidence = rule.truth().conf() * premiseLink.truth().conf();
@@ -1663,17 +1636,17 @@ public final class Cog {
         public static final String EMPTY = varID("");
 
         public Var(String name) {
-            super(VARIABLE_PREFIX + name, Truth.UNKNOWN); // Importance handled by memory (usually protected)
+            super(VAR_PREFIX + name, Truth.UNKNOWN); // Importance handled by memory (usually protected)
         }
 
         public static String varID(String name) {
-            return "V<" + VARIABLE_PREFIX + name + ">";
+            return "V<" + VAR_PREFIX + name + ">";
         }
 
         @Override
         public Atom withCertainty(Truth newCertainty) {
-            // Creating a copy of a variable doesn't make sense with different certainty
-            return new Var(name.substring(VARIABLE_PREFIX.length()));
+            // Creating a copy of a var doesn't make sense with different certainty
+            return new Var(name.substring(VAR_PREFIX.length()));
         }
 
         @Override
@@ -1915,7 +1888,7 @@ public final class Cog {
     }
 
     /**
-     * Record holding results from backward chaining queries, including variable bind
+     * Record holding results from backward chaining queries, including var bind
      */
     public record Answer(Bind bind, Atom inferredAtom) {
     }
@@ -1925,7 +1898,7 @@ public final class Cog {
 
 
     /**
-     * Represents variable bind during unification. Immutable.
+     * Represents var bind during unification. Immutable.
      */
     public record Bind(Map<String, String> map) {
         public static final Bind EMPTY_BIND = new Bind(Collections.emptyMap());
@@ -1949,11 +1922,11 @@ public final class Cog {
          */
         public Optional<Bind> put(String varId, String valueId) {
             var mk = get(varId);
-            if (mk != null) { // Variable already bound
+            if (mk != null) { // var already bound
                 return mk.equals(valueId) ? Optional.of(this) : empty(); // Consistent?
             }
             if (map.containsValue(varId)) { // Trying to bind X to Y where Y is already bound to Z
-                // Check for cycles or inconsistencies: If valueId is a variable already bound to something else.
+                // Check for cycles or inconsistencies: If valueId is a var already bound to something else.
                 if (valueId.startsWith(Var.EMPTY)) {
                     var mv = get(valueId);
                     if (mv != null && !mv.equals(varId)) return empty();
@@ -2000,7 +1973,7 @@ public final class Cog {
             return map.toString();
         }
 
-        /** follow bind chain for an ID (might be variable or concrete) */
+        /** follow bind chain for an ID (might be var or concrete) */
         private String follow(String id) {
             var at = id;
             var next = get(at);
@@ -2036,7 +2009,7 @@ public final class Cog {
          * Unifies two Atoms, returning updated bind if successful.
          */
         public Optional<Bind> unify(Atom pattern, Atom instance, Bind init) {
-            // Dereference variables in both pattern and instance based on initial bind
+            // Dereference vars in both pattern and instance based on initial bind
             var p = substitute(pattern, init);
             var i = substitute(instance, init);
 
@@ -2089,36 +2062,34 @@ public final class Cog {
 
             if (pId.equals(iId)) return Optional.of(bind);
 
-            if (pId.startsWith(Var.EMPTY)) {
+            if (pId.startsWith(Var.EMPTY))
                 return bind.put(pId, iId);
-            }
-            if (iId.startsWith(Var.EMPTY)) {
+
+            if (iId.startsWith(Var.EMPTY))
                 return bind.put(iId, pId);
-            }
 
-            // If neither are variables and they are not equal, they don't unify directly by ID.
+
+            // If neither are vars and they are not equal, they don't unify directly by ID.
             // However, if they represent complex structures (Links), we need to unify their structure.
-            var patternAtomOpt = mem.atom(pId);
-            var instanceAtomOpt = mem.atom(iId);
-
-            if (patternAtomOpt.isPresent() && instanceAtomOpt.isPresent()) {
-                // Delegate to full Atom unification
-                return unify(patternAtomOpt.get(), instanceAtomOpt.get(), bind);
-            } else {
-                // If atoms cannot be retrieved, assume non-match if IDs differ
-                return empty();
+            var patternAtomOpt = mem._atom(pId);
+            if (patternAtomOpt!=null) {
+                var instanceAtomOpt = mem._atom(iId);
+                if (instanceAtomOpt != null)
+                    return unify(patternAtomOpt, instanceAtomOpt, bind); // Delegate to full Atom unification
             }
+
+            return empty(); // If atoms cannot be retrieved, assume non-match if IDs differ
         }
 
 
         /**
-         * Applies bind to substitute variables in an Atom pattern.
+         * Applies bind to substitute vars in an Atom pattern.
          */
         public Atom substitute(Atom pattern, Bind bind) {
             if (bind.map.isEmpty()) return pattern; // No substitutions needed
 
             if (pattern instanceof Var var) {
-                // Follow the bind chain until a non-variable or unbound variable is found
+                // Follow the bind chain until a non-var or unbound var is found
                 var currentVarId = var.id;
                 var boundValueId = bind.get(currentVarId);
                 var visited = new HashSet<>();
@@ -2128,11 +2099,11 @@ public final class Cog {
                         boundValueId = bind.get(currentVarId);
                     } else {
                         // Bound to a concrete value ID, retrieve the corresponding Atom
-                        return mem.atom(boundValueId).orElse(pattern); // Return original if bound value doesn't exist
+                        return mem.atomOrElse(boundValueId, pattern); // Return original if bound value doesn't exist
                     }
                 }
-                // If loop detected or unbound, return the last variable in the chain or original
-                return mem.atom(currentVarId).orElse(pattern);
+                // If loop detected or unbound, return the last var in the chain or original
+                return mem.atomOrElse(currentVarId, pattern);
             }
 
             if (pattern instanceof Link link) {
@@ -2141,14 +2112,14 @@ public final class Cog {
                 List<String> newTargets = new ArrayList<>(originalTargets.size());
                 for (var targetId : originalTargets) {
                     // Recursively substitute in targets
-                    var targetPattern = mem.atom(targetId).orElse(null); // Get Atom for target ID
+                    var targetPattern = mem._atom(targetId); // Get Atom for target ID
                     String newTargetId;
                     if (targetPattern != null) {
                         var substitutedTarget = substitute(targetPattern, bind);
                         newTargetId = substitutedTarget.id;
                         if (!targetId.equals(newTargetId)) changed = true;
                     } else {
-                        // If target doesn't exist, maybe it's a variable? Check bind directly.
+                        // If target doesn't exist, maybe it's a var? Check bind directly.
                         newTargetId = bind.follow(targetId);
                         if (!targetId.equals(newTargetId)) changed = true;
                     }
@@ -2166,7 +2137,7 @@ public final class Cog {
                 }
             }
 
-            // Node that is not a variable - no substitution possible
+            // Node that is not a var - no substitution possible
             return pattern;
         }
 
@@ -2205,17 +2176,17 @@ public final class Cog {
             this.goalY = goalY;
 
             // Create core nodes used by the environment/agent representation
-            this.agentNode = cle.getOrCreateNode("Self");
-            this.atLocationPred = cle.getOrCreateNode("Predicate:AtLocation");
-            this.moveN = cle.getOrCreateNode("Action:MoveNorth");
-            this.moveS = cle.getOrCreateNode("Action:MoveSouth");
-            this.moveE = cle.getOrCreateNode("Action:MoveEast");
-            this.moveW = cle.getOrCreateNode("Action:MoveWest");
+            this.agentNode = cle.node("Self");
+            this.atLocationPred = cle.node("Predicate:AtLocation");
+            this.moveN = cle.node("Action:MoveNorth");
+            this.moveS = cle.node("Action:MoveSouth");
+            this.moveE = cle.node("Action:MoveEast");
+            this.moveW = cle.node("Action:MoveWest");
         }
 
         private Node getPositionNode(int x, int y) {
             var name = String.format("Pos_%d_%d", x, y);
-            return positionNodes.computeIfAbsent(name, cle::getOrCreateNode);
+            return positionNodes.computeIfAbsent(name, cle::node);
         }
 
         @Override
@@ -2307,7 +2278,9 @@ public final class Cog {
         public void runLoop(Game env, Atom goal, int maxCycles) {
             System.out.println("\n--- Agent: Starting Run ---");
             this.currentGoalAtom = goal;
-            mem.atom(goal.id).ifPresent(g -> g.updateImportance(IMPORTANCE_BOOST_ON_GOAL_FOCUS, iteration()));
+
+            mem._atom(goal.id).updateImportance(IMPORTANCE_BOOST_ON_GOAL_FOCUS, iteration());
+
             System.out.println("Initial Goal: " + currentGoalAtom.id + " " + currentGoalAtom.truth());
 
             // Initial perception
@@ -2436,7 +2409,7 @@ public final class Cog {
             if (availableActions.isEmpty()) return empty();
 
             // 1. Try Planning towards the current goal
-            var planOpt = inference.planToActionSequence(currentGoalAtom,
+            var planOpt = infer.planToActionSequence(currentGoalAtom,
                     PLANNING_DEFAULT_MAX_PLAN_DEPTH,
                     INFERENCE_DEFAULT_MAX_DEPTH);
             if (planOpt.isPresent() && !planOpt.get().isEmpty()) {
