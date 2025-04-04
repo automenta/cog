@@ -482,9 +482,9 @@ public class SimpleCorePLN {
         addAtom(pet);
 
         // Define some initial knowledge (Links)
-        // Cats are mammals (with high certainty)
+        // Cats are mammals (with high truth)
         addLink(Link.LinkType.INHERITANCE, new TruthValue(0.95, 30), cat.id, mammal.id);
-        // Mammals are animals (with high certainty)
+        // Mammals are animals (with high truth)
         addLink(Link.LinkType.INHERITANCE, new TruthValue(0.98, 40), mammal.id, animal.id);
         // Animals are cute (moderately certain)
         addLink(Link.LinkType.INHERITANCE, new TruthValue(0.6, 10), animal.id, cute.id);

@@ -1266,8 +1266,8 @@ import java.util.stream.Stream;
     /** Represents uncertain truth: strength and count (evidence amount). */
     public static class TruthValue {
         public static final TruthValue DEFAULT = new TruthValue(0.5, 0.0); // Max ignorance
-        public static final TruthValue CERTAIN = new TruthValue(1.0, 100.0); // High certainty (adjust count as needed)
-        public static final TruthValue IMPOSSIBLE = new TruthValue(0.0, 100.0); // High certainty of falsehood
+        public static final TruthValue CERTAIN = new TruthValue(1.0, 100.0); // High truth (adjust count as needed)
+        public static final TruthValue IMPOSSIBLE = new TruthValue(0.0, 100.0); // High truth of falsehood
 
         public final double strength; // Probability-like value [0, 1]
         public final double count;    // Amount of evidence (non-negative)
