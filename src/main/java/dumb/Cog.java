@@ -1,5 +1,7 @@
 package dumb;
 
+import org.jetbrains.annotations.Nullable;
+
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.*;
@@ -97,7 +99,7 @@ public final class Cog {
 
     // --- Core Components ---
     private final Memory mem;
-    private final Inference inference;
+    private final Infer inference;
     private final Agent agent;
     private final ScheduledExecutorService scheduler;
 
@@ -109,7 +111,7 @@ public final class Cog {
     // --- Constructor ---
     public Cog() {
         this.mem = new Memory(this::iteration);
-        this.inference = new Inference(this.mem);
+        this.inference = new Infer(this.mem);
         this.agent = new Agent();
 
         // Schedule periodic maintenance (forgetting, importance decay)
@@ -443,7 +445,7 @@ public final class Cog {
      *
      * @param queryPattern The Atom pattern to query (can contain VariableNodes).
      * @param maxDepth     Maximum recursion depth for the search.
-     * @return A list of QueryResult records, each containing bindings and the inferred Atom matching the query.
+     * @return A list of QueryResult records, each containing bind and the inferred Atom matching the query.
      */
     public List<Answer> query(Atom queryPattern, int maxDepth) {
         return inference.backwardChain(queryPattern, maxDepth);
@@ -601,7 +603,7 @@ public final class Cog {
         }
 
         public Node node(String name) {
-            return (Node)atom(Node.id(name)).orElse(null);
+            return (Node) atom(Node.id(name)).orElse(null);
         }
 
         /**
@@ -781,20 +783,18 @@ public final class Cog {
     }
 
 
-
     // === Core Data Structures                                           ===
-
 
 
     // === Nested Static Class: InferenceEngine                           ===
 
-    public static class Inference {
+    public static class Infer {
         private final Memory mem;
-        private final Unification unify;
+        private final Unify unify;
 
-        public Inference(Memory mem) {
+        public Infer(Memory mem) {
             this.mem = mem;
-            this.unify = new Unification(mem);
+            this.unify = new Unify(mem);
         }
 
         // --- Core Inference Rules ---
@@ -840,7 +840,7 @@ public final class Cog {
             if (cAC.conf() < TRUTH_MIN_CONFIDENCE_FOR_VALID_EVIDENCE) return empty();
 
             var timeAC = (linkAB.type == Link.Type.PREDICTIVE_IMPLICATION) ?
-                Time.compose(linkAB.time(), linkBC.time()) : null;
+                    Time.compose(linkAB.time(), linkBC.time()) : null;
 
             var inferredLink = new Link(linkAB.type, List.of(aId, cId), cAC, timeAC);
 
@@ -1018,7 +1018,7 @@ public final class Cog {
             var processedCount = 0;
             while (!queue.isEmpty() && processedCount < FORWARD_CHAINING_BATCH_SIZE) {
                 var potential = queue.poll();
-                var signature = potential.getSignature();
+                var signature = potential.signature;
 
                 if (!executedSignatures.contains(signature)) {
                     Optional<?> resultOpt = empty();
@@ -1058,10 +1058,10 @@ public final class Cog {
             return backwardChainRecursive(queryPattern, maxDepth, Bind.EMPTY_BIND, new HashSet<>());
         }
 
-        private List<Answer> backwardChainRecursive(Atom queryPattern, int depth, Bind b, Set<String> visited) {
-            // Apply current bindings to the query pattern
-            var q = unify.substitute(queryPattern, b);
-            var visitedId = q.id + b.hashCode(); // ID includes bindings state
+        private List<Answer> backwardChainRecursive(Atom queryPattern, int depth, Bind bind, Set<String> visited) {
+            // Apply current bind to the query pattern
+            var q = unify.substitute(queryPattern, bind);
+            var visitedId = q.id + bind.hashCode(); // ID includes bind state
 
             if (depth <= 0 || !visited.add(visitedId))
                 return Collections.emptyList(); // Depth limit or cycle detected
@@ -1073,27 +1073,27 @@ public final class Cog {
             atom(q.id).ifPresent(match -> {
                 if (match.truth().conf() > TRUTH_MIN_CONFIDENCE_FOR_VALID_EVIDENCE) {
                     // Check if the concrete match from memory unifies with the potentially var query
-                    unify.unify(q, match, b)
-                            .ifPresent(finalBindings -> results.add(new Answer(finalBindings, match)));
+                    unify.unify(q, match, bind)
+                            .ifPresent(finalBind -> results.add(new Answer(finalBind, match)));
                 }
             });
 
             // 2. Rule-Based Derivation (Backward Application using Unification)
 
             // Try Modus Ponens Backward: Query B, find A and A->B
-            results.addAll(tryModusPonensBackward(q, nextDepth, b, visited));
+            results.addAll(tryModusPonensBackward(q, nextDepth, bind, visited));
 
             // Try Deduction Backward: Query A->C, find A->B and B->C
             if (q instanceof Link queryLink && isValidBinaryLink(queryLink))
-                results.addAll(tryDeductionBackward(queryLink, nextDepth, b, visited));
+                results.addAll(tryDeductionBackward(queryLink, nextDepth, bind, visited));
 
             // Try Inversion Backward: Query B->A, find A->B
             if (q instanceof Link queryLink && isValidBinaryLink(queryLink))
-                results.addAll(tryInversionBackward(queryLink, nextDepth, b, visited));
+                results.addAll(tryInversionBackward(queryLink, nextDepth, bind, visited));
 
 
             // Try ForAll Instantiation Backward: Query P(a), find ForAll(?X, P(?X)) rule
-            results.addAll(tryForAllBackward(q, nextDepth, b, visited));
+            results.addAll(tryForAllBackward(q, nextDepth, bind, visited));
 
             // TODO: Try Temporal Rules Backward (e.g., HoldsAt via Persistence/Initiates/Terminates)
 
@@ -1104,7 +1104,7 @@ public final class Cog {
 
         // --- Backward Rule Helpers ---
 
-        private List<Answer> tryModusPonensBackward(Atom queryB, int depth, Bind bindings, Set<String> visited) {
+        private List<Answer> tryModusPonensBackward(Atom queryB, int depth, Bind bind, Set<String> visited) {
             List<Answer> results = new ArrayList<>();
             // Collect implications A->B, where B unifies with queryB
             Stream.of(Link.Type.INHERITANCE, Link.Type.PREDICTIVE_IMPLICATION)
@@ -1118,22 +1118,22 @@ public final class Cog {
                         if (potentialA == null) return;
 
                         // Try to unify the rule's consequent (B) with the query (B)
-                        unify.unify(potentialB, queryB, bindings).ifPresent(bindingsB -> {
-                            // If unified, create subgoal to prove the premise (A) using bindings from B unification
-                            var subgoalA = unify.substitute(potentialA, bindingsB);
-                            var resultsA = backwardChainRecursive(subgoalA, depth, bindingsB, visited);
+                        unify.unify(potentialB, queryB, bind).ifPresent(bindB -> {
+                            // If unified, create subgoal to prove the premise (A) using bind from B unification
+                            var subgoalA = unify.substitute(potentialA, bindB);
+                            var resultsA = backwardChainRecursive(subgoalA, depth, bindB, visited);
 
                             for (var resA : resultsA) {
                                 // And confirm the rule A->B itself holds with sufficient confidence
-                                var rulePattern = unify.substitute(ruleAB, resA.bindings);
-                                var resultsAB = backwardChainRecursive(rulePattern, depth, resA.bindings, visited);
+                                var rulePattern = unify.substitute(ruleAB, resA.bind);
+                                var resultsAB = backwardChainRecursive(rulePattern, depth, resA.bind, visited);
 
                                 for (var resAB : resultsAB) {
                                     // If both subgoals met, calculate the inferred certainty for B via MP
                                     modusPonens(resA.inferredAtom, (Link) resAB.inferredAtom).ifPresent(inferredB -> {
-                                        // Final unification check with the original query and final bindings
-                                        unify.unify(queryB, inferredB, resAB.bindings).ifPresent(finalBindings ->
-                                                results.add(new Answer(finalBindings, inferredB))
+                                        // Final unification check with the original query and final bind
+                                        unify.unify(queryB, inferredB, resAB.bind).ifPresent(finalBind ->
+                                                results.add(new Answer(finalBind, inferredB))
                                         );
                                     });
                                 }
@@ -1143,7 +1143,7 @@ public final class Cog {
             return results;
         }
 
-        private List<Answer> tryDeductionBackward(Link queryAC, int depth, Bind bindings, Set<String> visited) {
+        private List<Answer> tryDeductionBackward(Link queryAC, int depth, Bind bind, Set<String> visited) {
             List<Answer> results = new ArrayList<>();
             var aIdQuery = queryAC.targets.get(0);
             var cIdQuery = queryAC.targets.get(1);
@@ -1157,22 +1157,22 @@ public final class Cog {
                         var bIdRule = targets.get(1);
 
                         // Unify query A with rule A
-                        unify.unifyAtomId(aIdQuery, aIdRule, bindings).ifPresent(bindingsA -> {
-                            // Create subgoal B->C pattern, substituting bindings from A unification
+                        unify.unifyAtomId(aIdQuery, aIdRule, bind).ifPresent(bindA -> {
+                            // Create subgoal B->C pattern, substituting bind from A unification
                             var subgoalBCPattern = new Link(queryAC.type, List.of(bIdRule, cIdQuery), Truth.UNKNOWN, null);
-                            var subgoalBC = unify.substitute(subgoalBCPattern, bindingsA);
+                            var subgoalBC = unify.substitute(subgoalBCPattern, bindA);
 
                             // Recurse: Prove A->B (the rule itself)
-                            var resultsAB = backwardChainRecursive(ruleAB, depth, bindingsA, visited);
+                            var resultsAB = backwardChainRecursive(ruleAB, depth, bindA, visited);
                             for (var resAB : resultsAB) {
                                 // Recurse: Prove B->C
-                                var resultsBC = backwardChainRecursive(subgoalBC, depth, resAB.bindings, visited);
+                                var resultsBC = backwardChainRecursive(subgoalBC, depth, resAB.bind, visited);
                                 for (var resBC : resultsBC) {
                                     // If subgoals met, perform deduction forward to get inferred A->C
                                     deduce((Link) resAB.inferredAtom, (Link) resBC.inferredAtom).ifPresent(inferredAC -> {
-                                        // Final unification with original query and final bindings
-                                        unify.unify(queryAC, inferredAC, resBC.bindings).ifPresent(finalBindings ->
-                                                results.add(new Answer(finalBindings, inferredAC))
+                                        // Final unification with original query and final bind
+                                        unify.unify(queryAC, inferredAC, resBC.bind).ifPresent(finalBind ->
+                                                results.add(new Answer(finalBind, inferredAC))
                                         );
                                     });
                                 }
@@ -1182,7 +1182,7 @@ public final class Cog {
             return results;
         }
 
-        private List<Answer> tryInversionBackward(Link queryBA, int depth, Bind bindings, Set<String> visited) {
+        private List<Answer> tryInversionBackward(Link queryBA, int depth, Bind bind, Set<String> visited) {
             List<Answer> results = new ArrayList<>();
             var bIdQuery = queryBA.targets.get(0);
             var aIdQuery = queryBA.targets.get(1);
@@ -1195,17 +1195,17 @@ public final class Cog {
                         var bIdRule = ruleAB.targets.get(1);
 
                         // Unify query B with rule B, and query A with rule A simultaneously
-                        unify.unifyAtomId(bIdQuery, bIdRule, bindings)
+                        unify.unifyAtomId(bIdQuery, bIdRule, bind)
                                 .flatMap(b1 -> unify.unifyAtomId(aIdQuery, aIdRule, b1))
-                                .ifPresent(initialBindings -> {
+                                .ifPresent(initBind -> {
                                     // If compatible, subgoal is to prove A->B
-                                    var resultsAB = backwardChainRecursive(ruleAB, depth, initialBindings, visited);
+                                    var resultsAB = backwardChainRecursive(ruleAB, depth, initBind, visited);
                                     for (var resAB : resultsAB) {
                                         // If subgoal met, perform inversion forward
                                         invert((Link) resAB.inferredAtom).ifPresent(inferredBA -> {
                                             // Final unification check
-                                            unify.unify(queryBA, inferredBA, resAB.bindings).ifPresent(finalBindings ->
-                                                    results.add(new Answer(finalBindings, inferredBA))
+                                            unify.unify(queryBA, inferredBA, resAB.bind).ifPresent(finalBind ->
+                                                    results.add(new Answer(finalBind, inferredBA))
                                             );
                                         });
                                     }
@@ -1214,7 +1214,7 @@ public final class Cog {
             return results;
         }
 
-        private List<Answer> tryForAllBackward(Atom queryInstance, int depth, Bind bindings, Set<String> visited) {
+        private List<Answer> tryForAllBackward(Atom queryInstance, int depth, Bind bind, Set<String> visited) {
             List<Answer> results = new ArrayList<>();
             mem.links(Link.Type.FOR_ALL).forEach(forAllLink -> {
                 var targets = forAllLink.targets;
@@ -1224,16 +1224,16 @@ public final class Cog {
                     var bodyId = targets.getLast();
 
                     // Try to unify the query instance with the body pattern
-                    atom(bodyId).flatMap(bodyPattern -> unify.unify(bodyPattern, queryInstance, bindings)).ifPresent(matchBindings -> {
+                    atom(bodyId).flatMap(bodyPattern -> unify.unify(bodyPattern, queryInstance, bind)).ifPresent(matchBind -> {
                         // If unification succeeds, the instance might hold if the ForAll rule itself holds.
                         // Check the ForAll rule's confidence recursively.
-                        var forAllResults = backwardChainRecursive(forAllLink, depth, matchBindings, visited);
+                        var forAllResults = backwardChainRecursive(forAllLink, depth, matchBind, visited);
                         for (var resForAll : forAllResults) {
                             // The instance is supported with the confidence of the ForAll rule.
-                            // Substitute final bindings into the original query instance.
-                            var finalInstance = unify.substitute(queryInstance, resForAll.bindings);
+                            // Substitute final bind into the original query instance.
+                            var finalInstance = unify.substitute(queryInstance, resForAll.bind);
                             var supportedInstance = finalInstance.withCertainty(resForAll.inferredAtom.truth());
-                            results.add(new Answer(resForAll.bindings, supportedInstance));
+                            results.add(new Answer(resForAll.bind, supportedInstance));
                         }
                     });
                 }
@@ -1332,7 +1332,7 @@ public final class Cog {
                         var consequenceAtom = consequenceAtomOpt.get();
 
                         // Check if rule's consequence unifies with the current goal pattern
-                        unify.unify(consequenceAtom, goalPattern, Bind.EMPTY_BIND).ifPresent(bindings -> {
+                        unify.unify(consequenceAtom, goalPattern, Bind.EMPTY_BIND).ifPresent(bind -> {
                             // If consequence matches, examine the premise
                             atom(premiseId).ifPresent(premiseAtom -> {
                                 // Case 1: Premise is Sequence(State..., Action)
@@ -1347,7 +1347,7 @@ public final class Cog {
                                         var preconditions = premiseLink.targets.stream()
                                                 .filter(id -> !id.equals(actionAtom.id))
                                                 .map(mem::atom).filter(Optional::isPresent).map(Optional::get)
-                                                .map(precond -> unify.substitute(precond, bindings)) // Apply bindings from goal unification
+                                                .map(precond -> unify.substitute(precond, bind)) // Apply bind from goal unification
                                                 .toList();
                                         var confidence = rule.truth().conf() * premiseLink.truth().conf();
                                         steps.add(new PotentialPlanStep(actionAtom, preconditions, confidence));
@@ -1418,7 +1418,7 @@ public final class Cog {
             final long currentTime = mem.time.get();
             var premiseImportanceProduct = Arrays.stream(premises)
                     .mapToDouble(p -> p.getCurrentImportance(currentTime) * p.truth().conf())
-                    .reduce(1.0, (a, b) -> a * b); // Combine importance, weighted by confidence
+                    .reduce(1, (a, b) -> a * b); // Combine importance, weighted by confidence
             return IMPORTANCE_BOOST_ON_ACCESS + premiseImportanceProduct * IMPORTANCE_BOOST_INFERRED_FACTOR;
         }
 
@@ -1439,27 +1439,24 @@ public final class Cog {
                 this.premises = premises;
                 // Priority based on product of premise importances weighted by confidence
                 this.priority = Arrays.stream(premises)
-                        .mapToDouble(p -> p.getCurrentImportance(currentTime) * p.truth().conf())
-                        .reduce(1.0, (a, b) -> a * b);
+                        .mapToDouble(p ->
+                                p.getCurrentImportance(currentTime) * p.truth().conf())
+                        .reduce(1, (a, b) -> a * b);
                 this.signature = ruleType + ":" + Arrays.stream(premises).map(atom -> atom.id).sorted().collect(Collectors.joining("|"));
             }
 
-            String getSignature() {
-                return signature;
-            }
-
             String getSignatureSwapped() { // For symmetric rules like Deduction A->B->C vs C<-B<-A
-                if (premises.length == 2) {
-                    return ruleType + ":" + Stream.of(premises[1].id, premises[0].id).sorted().collect(Collectors.joining("|"));
-                }
-                return signature;
+                return premises.length == 2 ?
+                    ruleType + ":" + Stream.of(premises[1].id, premises[0].id).sorted().collect(Collectors.joining("|")) :
+                    signature;
             }
         }
 
         /**
          * Represents a potential step in a plan.
          */
-        private record PotentialPlanStep(Atom action, List<Atom> preconditions, double confidence) { }
+        private record PotentialPlanStep(Atom action, List<Atom> preconditions, double confidence) {
+        }
     }
 
     /**
@@ -1707,7 +1704,8 @@ public final class Cog {
             return type + "(" + String.join(",", idTargets) + ")";
         }
 
-        @Nullable public Time time() {
+        @Nullable
+        public Time time() {
             return time;
         }
 
@@ -1917,32 +1915,37 @@ public final class Cog {
     }
 
     /**
-     * Record holding results from backward chaining queries, including variable bindings.
+     * Record holding results from backward chaining queries, including variable bind
      */
-    public record Answer(Bind bindings, Atom inferredAtom) {
+    public record Answer(Bind bind, Atom inferredAtom) {
     }
-
 
 
     // === Unification Logic                                              ===
 
 
     /**
-     * Represents variable bindings during unification. Immutable.
+     * Represents variable bind during unification. Immutable.
      */
     public record Bind(Map<String, String> map) {
         public static final Bind EMPTY_BIND = new Bind(Collections.emptyMap());
 
         public Bind {
-            map = Map.copyOf(map);
-        } // Ensure immutability
+            map = Map.copyOf(map); // Ensure immutability //TODO avoid duplication
+        }
 
-        @Nullable public String get(String varId) {
+        public final String getOrElse(String varId, String orElse) {
+            var v = get(varId);
+            return v == null ? orElse : v;
+        }
+
+        @Nullable
+        public String get(String varId) {
             return map.get(varId);
         }
 
         /**
-         * Creates new bindings extended with one more mapping. Returns empty Optional if inconsistent.
+         * Creates new bind extended with one more mapping. Returns empty Optional if inconsistent.
          */
         public Optional<Bind> put(String varId, String valueId) {
             var mk = get(varId);
@@ -1964,7 +1967,7 @@ public final class Cog {
         }
 
         /**
-         * Merges two sets of bindings. Returns empty Optional if inconsistent.
+         * Merges two sets of bind Returns empty Optional if inconsistent.
          */
         public Optional<Bind> merge(Bind other) {
             Map<String, String> mergedMap = new HashMap<>(this.map);
@@ -1973,7 +1976,7 @@ public final class Cog {
                 var valueId = entry.getValue();
                 if (mergedMap.containsKey(varId)) {
                     if (!mergedMap.get(varId).equals(valueId)) {
-                        return empty(); // Inconsistent binding
+                        return empty(); // Inconsistent bind
                     }
                 } else {
                     mergedMap.put(varId, valueId);
@@ -1996,23 +1999,44 @@ public final class Cog {
         public String toString() {
             return map.toString();
         }
+
+        /** follow bind chain for an ID (might be variable or concrete) */
+        private String follow(String id) {
+            var at = id;
+            var next = get(at);
+            if (next == null)
+                return at;
+            var visited = new HashSet<>();
+            while (visited.add(at)) {
+                if (next.startsWith(Var.EMPTY)) {
+                    at = next;
+                    next = get(at);
+                    if (next==null)
+                        break;
+                } else {
+                    return next; // Bound to concrete ID
+                }
+            }
+            return at; // Unbound or cycle detected, return last ID found
+        }
+
     }
 
     /**
      * Performs unification between Atom patterns.
      */
-    public static class Unification {
+    public static class Unify {
         private final Memory mem; // Needed to resolve IDs to Atoms if necessary
 
-        public Unification(Memory mem) {
+        public Unify(Memory mem) {
             this.mem = mem;
         }
 
         /**
-         * Unifies two Atoms, returning updated bindings if successful.
+         * Unifies two Atoms, returning updated bind if successful.
          */
         public Optional<Bind> unify(Atom pattern, Atom instance, Bind init) {
-            // Dereference variables in both pattern and instance based on initial bindings
+            // Dereference variables in both pattern and instance based on initial bind
             var p = substitute(pattern, init);
             var i = substitute(instance, init);
 
@@ -2038,19 +2062,19 @@ public final class Cog {
                     return empty();
                 }
 
-                var currentBindings = init;
+                var currentBind = init;
                 for (var j = 0; j < linkP.targets.size(); j++) {
                     var targetPId = linkP.targets.get(j);
                     var targetIId = linkI.targets.get(j);
 
                     // Recursively unify target IDs
-                    var result = unifyAtomId(targetPId, targetIId, currentBindings);
-                    if (result.isEmpty()) {
+                    var result = unifyAtomId(targetPId, targetIId, currentBind);
+                    if (result.isEmpty())
                         return empty(); // Unification failed for a target
-                    }
-                    currentBindings = result.get();
+
+                    currentBind = result.get();
                 }
-                return Optional.of(currentBindings); // All targets unified successfully
+                return Optional.of(currentBind); // All targets unified successfully
             }
 
             return empty(); // Should not happen if Atoms are Nodes or Links
@@ -2059,17 +2083,17 @@ public final class Cog {
         /**
          * Unifies two Atom IDs, resolving them to Atoms if needed.
          */
-        public Optional<Bind> unifyAtomId(String patternId, String instanceId, Bind bindings) {
-            var pId = bindings.getOrElse(patternId, patternId);
-            var iId = bindings.getOrElse(instanceId, instanceId);
+        public Optional<Bind> unifyAtomId(String patternId, String instanceId, Bind bind) {
+            var pId = bind.getOrElse(patternId, patternId);
+            var iId = bind.getOrElse(instanceId, instanceId);
 
-            if (pId.equals(iId)) return Optional.of(bindings);
+            if (pId.equals(iId)) return Optional.of(bind);
 
             if (pId.startsWith(Var.EMPTY)) {
-                return bindings.put(pId, iId);
+                return bind.put(pId, iId);
             }
             if (iId.startsWith(Var.EMPTY)) {
-                return bindings.put(iId, pId);
+                return bind.put(iId, pId);
             }
 
             // If neither are variables and they are not equal, they don't unify directly by ID.
@@ -2079,7 +2103,7 @@ public final class Cog {
 
             if (patternAtomOpt.isPresent() && instanceAtomOpt.isPresent()) {
                 // Delegate to full Atom unification
-                return unify(patternAtomOpt.get(), instanceAtomOpt.get(), bindings);
+                return unify(patternAtomOpt.get(), instanceAtomOpt.get(), bind);
             } else {
                 // If atoms cannot be retrieved, assume non-match if IDs differ
                 return empty();
@@ -2088,20 +2112,20 @@ public final class Cog {
 
 
         /**
-         * Applies bindings to substitute variables in an Atom pattern.
+         * Applies bind to substitute variables in an Atom pattern.
          */
-        public Atom substitute(Atom pattern, Bind bindings) {
-            if (bindings.map.isEmpty()) return pattern; // No substitutions needed
+        public Atom substitute(Atom pattern, Bind bind) {
+            if (bind.map.isEmpty()) return pattern; // No substitutions needed
 
             if (pattern instanceof Var var) {
-                // Follow the binding chain until a non-variable or unbound variable is found
+                // Follow the bind chain until a non-variable or unbound variable is found
                 var currentVarId = var.id;
-                var boundValueId = bindings.get(currentVarId).orElse(null);
-                Set<String> visited = new HashSet<>();
+                var boundValueId = bind.get(currentVarId);
+                var visited = new HashSet<>();
                 while (boundValueId != null && visited.add(currentVarId)) {
                     if (boundValueId.startsWith(Var.EMPTY)) {
                         currentVarId = boundValueId;
-                        boundValueId = bindings.get(currentVarId).orElse(null);
+                        boundValueId = bind.get(currentVarId);
                     } else {
                         // Bound to a concrete value ID, retrieve the corresponding Atom
                         return mem.atom(boundValueId).orElse(pattern); // Return original if bound value doesn't exist
@@ -2120,12 +2144,12 @@ public final class Cog {
                     var targetPattern = mem.atom(targetId).orElse(null); // Get Atom for target ID
                     String newTargetId;
                     if (targetPattern != null) {
-                        var substitutedTarget = substitute(targetPattern, bindings);
+                        var substitutedTarget = substitute(targetPattern, bind);
                         newTargetId = substitutedTarget.id;
                         if (!targetId.equals(newTargetId)) changed = true;
                     } else {
-                        // If target doesn't exist, maybe it's a variable? Check bindings directly.
-                        newTargetId = followBindingChain(targetId, bindings);
+                        // If target doesn't exist, maybe it's a variable? Check bind directly.
+                        newTargetId = bind.follow(targetId);
                         if (!targetId.equals(newTargetId)) changed = true;
                     }
                     newTargets.add(newTargetId);
@@ -2146,21 +2170,6 @@ public final class Cog {
             return pattern;
         }
 
-        // Helper to follow binding chain for an ID (might be variable or concrete)
-        private String followBindingChain(String id, Bind bindings) {
-            var currentId = id;
-            var boundValueId = bindings.get(currentId).orElse(null);
-            var visited = new HashSet<>();
-            while (boundValueId != null && visited.add(currentId)) {
-                if (boundValueId.startsWith(Var.EMPTY)) {
-                    currentId = boundValueId;
-                    boundValueId = bindings.get(currentId).orElse(null);
-                } else {
-                    return boundValueId; // Bound to concrete ID
-                }
-            }
-            return currentId; // Unbound or cycle detected, return last ID found
-        }
     }
 
     /**
