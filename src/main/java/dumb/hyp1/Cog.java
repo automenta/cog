@@ -1,4 +1,4 @@
-package dumb.hyp;
+package dumb.hyp1;
 
 import org.jetbrains.annotations.Nullable;
 
@@ -13,7 +13,7 @@ import java.util.function.Supplier;
 import java.util.random.RandomGenerator;
 import java.util.stream.Collectors;
 
-import static dumb.base.Cog.unitize;
+import static dumb.pln.Cog.unitize;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.emptyMap;
 

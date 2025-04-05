@@ -1,4 +1,4 @@
-package dumb.base;
+package dumb.pln;
 
 import org.jetbrains.annotations.Nullable;
 

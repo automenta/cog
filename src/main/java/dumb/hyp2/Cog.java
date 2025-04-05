@@ -14,6 +14,7 @@ import java.util.random.RandomGenerator;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static dumb.pln.Cog.unitize;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.emptyMap;
 import static java.util.Optional.empty;
@@ -33,7 +34,7 @@ import static java.util.Optional.empty;
  * - **Homoiconicity:** Code (MeTTa rules/expressions) *is* data (Atoms), enabling reflection and self-modification.
  * - **Is Atoms:** {@link Is} bridges to Java code/data for I/O, math, environment interaction, etc.
  * - **Metadata:** Immutable {@link Value} records (holding {@link Truth}, {@link Pri}, {@link Time}) associated with Atoms via {@link AtomicReference} for atomic updates.
- * - **Probabilistic & Importance Driven:** Truth values handle uncertainty; Importance values (STI/LTI) guide attention and forgetting.
+ * - **Probabilistic & Priority Driven:** Truth values handle uncertainty; Pri values (STI/LTI) guide attention and forgetting.
  * - **Agent Framework:** Includes a basic {@link Agent} model demonstrating perception, reasoning (via evaluation), action, and learning (by adding rules).
  * - **Modern Java:** Leverages Records, Sealed Interfaces, Streams, Concurrent Collections, AtomicReference for robustness and conciseness.
  * <p>
@@ -52,16 +53,16 @@ public final class Cog {
     private static final double TRUTH_MIN_CONFIDENCE_MATCH = 0.01; // Min confidence for an atom to be considered in matching/relevance
     private static final double TRUTH_REVISION_CONFIDENCE_THRESHOLD = 0.1; // Min confidence diff for revision boost
 
-    private static final double IMPORTANCE_INITIAL_STI = 0.2;
-    private static final double IMPORTANCE_INITIAL_LTI_FACTOR = 0.1;
-    private static final double IMPORTANCE_STI_DECAY_RATE = 0.08; // Decay per maintenance cycle
-    private static final double IMPORTANCE_LTI_DECAY_RATE = 0.008;
-    private static final double IMPORTANCE_STI_TO_LTI_RATE = 0.02;
-    private static final double IMPORTANCE_BOOST_ON_ACCESS = 0.08;
-    private static final double IMPORTANCE_BOOST_ON_REVISION_MAX = 0.5;
-    private static final double IMPORTANCE_BOOST_ON_GOAL_FOCUS = 0.95;
-    private static final double IMPORTANCE_BOOST_ON_PERCEPTION = 0.75;
-    private static final double IMPORTANCE_MIN_FORGET_THRESHOLD = 0.015; // Combined importance threshold
+    private static final double PRI_INITIAL_STI = 0.2;
+    private static final double PRI_INITIAL_LTI_FACTOR = 0.1;
+    private static final double PRI_STI_DECAY_RATE = 0.08; // Decay per maintenance cycle
+    private static final double PRI_LTI_DECAY_RATE = 0.008;
+    private static final double PRI_STI_TO_LTI_RATE = 0.02;
+    private static final double PRI_BOOST_ON_ACCESS = 0.08;
+    private static final double PRI_BOOST_ON_REVISION_MAX = 0.5;
+    private static final double PRI_BOOST_ON_GOAL_FOCUS = 0.95;
+    private static final double PRI_BOOST_ON_PERCEPTION = 0.75;
+    private static final double PRI_MIN_FORGET_THRESHOLD = 0.015; // Combined pri threshold
     private static final long FORGETTING_CHECK_INTERVAL_MS = 12000;
     private static final int FORGETTING_MAX_MEM_SIZE_TRIGGER = 18000;
     private static final int FORGETTING_TARGET_MEM_SIZE_FACTOR = 80; // %
@@ -92,9 +93,6 @@ public final class Cog {
     private final ScheduledExecutorService scheduler;
     private final AtomicLong logicalTime = new AtomicLong(0);
 
-    /**
-     * Initializes the Cog engine, including the Memory, Interpreter, Agent, Parser, and maintenance scheduler.
-     */
     public Cog() {
         this.mem = new Mem(this::getLogicalTime);
         this.unify = new Unify(this.mem);
@@ -123,19 +121,19 @@ public final class Cog {
             printSectionHeader(1, "Parsing & Atom Basics");
             var red = cog.parse("Red");
             var x = cog.parse("$x");
-            var lovesFritz = cog.parse("(Loves Self Fritz)");
+            var knowsSelf = cog.parse("(Knows Self Cog)");
             var numPi = cog.parse("3.14159"); // Parsed as Is<Double>
             var strHello = cog.parse("\"Hello\""); // Parsed as Is<String>
             var boolTrue = cog.parse("True"); // Parsed as Symbol("True")
 
             cog.add(red);
             cog.add(x);
-            cog.add(lovesFritz);
+            cog.add(knowsSelf);
             cog.add(numPi);
             cog.add(strHello);
 
-            System.out.println("Parsed Atoms: " + red + ", " + x + ", " + lovesFritz + ", " + numPi + ", " + strHello + ", " + boolTrue);
-            System.out.println("Retrieved Fritz Atom: " + cog.mem.getAtom(lovesFritz));
+            System.out.println("Parsed Atoms: " + red + ", " + x + ", " + knowsSelf + ", " + numPi + ", " + strHello + ", " + boolTrue);
+            System.out.println("Retrieved Cog Atom: " + cog.mem.getAtom(knowsSelf));
             System.out.println("Retrieved Pi Atom by ID: " + cog.mem.getAtom(numPi.id()));
             System.out.println("Default Value for Red: " + cog.mem.value(red));
 
@@ -148,14 +146,14 @@ public final class Cog {
 
             // --- [2] Unification ---
             printSectionHeader(2, "Unification");
-            var likes = cog.S("Likes"); // Programmatic creation still useful
-            var sam = cog.S("Sam");
-            var pizza = cog.S("Pizza");
-            var fact1 = cog.parse("(Likes Sam Pizza)");
-            var pattern1 = cog.parse("(Likes Sam $w)");
-            var pattern2 = cog.parse("(Likes $p Pizza)");
-            var pattern3 = cog.parse("(Likes $p $w)");
-            var patternFail = cog.parse("(Hates Sam Pizza)");
+            var knows = cog.S("Knows"); // Programmatic creation still useful
+            var sam = cog.S("A");
+            var sth = cog.S("Something");
+            var fact1 = cog.parse("(Knows A Something)");
+            var pattern1 = cog.parse("(Knows A $w)");
+            var pattern2 = cog.parse("(Knows $p Something)");
+            var pattern3 = cog.parse("(Knows $p $w)");
+            var patternFail = cog.parse("(Forgets A Something)");
 
             cog.add(fact1); // Add the fact to the space
 
@@ -163,7 +161,7 @@ public final class Cog {
             testUnification(cog, "Var Match 1", pattern2, fact1);
             testUnification(cog, "Var Match 2", pattern3, fact1);
             testUnification(cog, "Mismatch", patternFail, fact1);
-            testUnification(cog, "Occurs Check Fail", x, cog.parse("(Likes $x)"));
+            testUnification(cog, "Occurs Check Fail", x, cog.parse("(Knows $x)"));
 
             // --- [3] MeTTa Evaluation - Simple Rules (Defined via Parser in Bootstrap) ---
             printSectionHeader(3, "MeTTa Evaluation - Simple Rules (Peano)");
@@ -198,22 +196,22 @@ public final class Cog {
             // --- [5] Pattern Matching Query (`match`) ---
             printSectionHeader(5, "Pattern Matching Query");
             cog.load("""
-                    (Likes Sam Pizza)
-                    (Likes Dean Pizza)
-                    (Likes Sam Apples)
+                    (Knows A Something)
+                    (Knows B Something)
+                    (Knows A OtherThing)
                     """);
 
-            var queryPizza = cog.parse("(Likes $p Pizza)");
-            System.out.println("Querying: " + queryPizza);
-            var pizzaResults = cog.query(queryPizza);
-            printQueryResults(pizzaResults); // Expect matches for Sam and Dean
+            var querySomething = cog.parse("(Knows $p Something)");
+            System.out.println("Querying: " + querySomething);
+            var pizzaResults = cog.query(querySomething);
+            printQueryResults(pizzaResults); // Expect matches for A and B
 
             // Query using the 'match' Is function
-            var matchExpr = cog.parse("(match &self (Likes $p Pizza) $p)"); // Match in default space, return $p
-            evaluateAndPrint(cog, "Is<List:[Sam,Dean]> Match Query", matchExpr); // Expect Is<List:[Sam, Dean]>
+            var matchExpr = cog.parse("(match &self (Knows $p Something) $p)"); // Match in default space, return $p
+            evaluateAndPrint(cog, "Is<List:[A,B]> Match Query", matchExpr); // Expect Is<List:[A, B]>
 
             // --- [6] Truth & Importance Values ---
-            printSectionHeader(6, "Truth & Importance Values");
+            printSectionHeader(6, "Truth & Pri Values");
             cog.load("(: Penguin Bird)");
             var penguinFlies = cog.add(cog.parse("(Flies Penguin)"));
 
@@ -232,11 +230,11 @@ public final class Cog {
             cog.mem.boost(protectedAtom, 1.0); // Make very important initially
             System.out.println("Protected atom: " + protectedAtom + ", Initial Value: " + cog.mem.value(protectedAtom));
 
-            System.out.println("Adding 100 low-importance temporary atoms...");
+            System.out.println("Adding 100 low-pri temporary atoms...");
             for (var i = 0; i < 100; i++) {
                 var temp = cog.S("Temp_" + i + "_" + UUID.randomUUID().toString().substring(0, 4)); // Unique name
                 cog.add(temp);
-                cog.mem.updateValue(temp, v -> v.withImportance(new Pri(0.001, 0.0001))); // Very low importance
+                cog.mem.updateValue(temp, v -> v.withPri(new Pri(0.001, 0.0001))); // Very low pri
             }
             System.out.println("Memory size before wait: " + cog.mem.size());
             System.out.println("Waiting for maintenance cycle (approx " + FORGETTING_CHECK_INTERVAL_MS / 1000 + "s)...");
@@ -246,7 +244,7 @@ public final class Cog {
             System.out.println("Memory size after wait: " + sizeAfter);
             var protectedCheck = cog.mem.getAtom(protectedAtom); // Check if protected atom still exists
             System.out.println("Protected atom '" + protectedAtom/*.name()*/ + "' still exists: " + protectedCheck.isPresent());
-            System.out.println("Protected atom value after wait: " + protectedCheck.flatMap(cog.mem::value)); // Importance should have decayed slightly
+            System.out.println("Protected atom value after wait: " + protectedCheck.flatMap(cog.mem::value)); // Pri should have decayed slightly
 
             // --- [8] Agent Simulation ---
             printSectionHeader(8, "Agent Simulation");
@@ -326,7 +324,7 @@ public final class Cog {
         System.out.print(" -> [");
         System.out.print(results.stream().map(Atom::toString).collect(Collectors.joining(", ")));
         System.out.println("]");
-        // Optionally print truth/importance
+        // Optionally print truth/pri
         // results.forEach(r -> System.out.println("      Value: " + cog.space.value(r)));
     }
 
@@ -773,50 +771,50 @@ public final class Cog {
     }
 
     /**
-     * Immutable record holding Truth, Importance, and Time metadata.
+     * Immutable record holding Truth, Pri, and Time metadata.
      */
-    public record Value(Truth truth, Pri importance, Time access) {
+    public record Value(Truth truth, Pri pri, Time access) {
         public static final Value DEFAULT = new Value(Truth.UNKNOWN, Pri.DEFAULT, Time.DEFAULT);
 
         // Factory methods for creating updated Value instances
         public Value withTruth(Truth newTruth) {
-            return new Value(newTruth, importance, access);
+            return new Value(newTruth, pri, access);
         }
 
-        public Value withImportance(Pri newImportance) {
-            return new Value(truth, newImportance, access);
+        public Value withPri(Pri newPri) {
+            return new Value(truth, newPri, access);
         }
 
         public Value withTime(Time newTime) {
-            return new Value(truth, importance, newTime);
+            return new Value(truth, pri, newTime);
         }
 
         public Value updateTime(long now) {
-            return new Value(truth, importance, new Time(now));
+            return new Value(truth, pri, new Time(now));
         }
 
         /**
-         * Boosts importance and updates access time. Returns a new Value instance.
+         * Boosts pri and updates access time. Returns a new Value instance.
          */
         public Value boost(double boostAmount, long now) {
-            return this.withImportance(importance.boost(boostAmount)).updateTime(now);
+            return this.withPri(pri.boost(boostAmount)).updateTime(now);
         }
 
         /**
-         * Decays importance. Returns a new Value instance. Does not update access time.
+         * Decays pri. Returns a new Value instance. Does not update access time.
          */
         public Value decay(long now) { // 'now' available for future complex decay models
-            return this.withImportance(importance.decay());
+            return this.withPri(pri.decay());
         }
 
         /**
-         * Calculates combined current importance modulated by confidence and recency.
+         * Calculates combined current pri modulated by confidence and recency.
          */
-        public double getCurrentImportance(long now) {
+        public double getCurrentPri(long now) {
             double timeSinceAccess = Math.max(0, now - access.time());
             // Recency factor: decays exponentially over roughly 3 maintenance cycles
             var recencyFactor = Math.exp(-timeSinceAccess / (FORGETTING_CHECK_INTERVAL_MS * 3.0));
-            return importance.getCurrent(recencyFactor) * truth.confidence();
+            return pri.getCurrent(recencyFactor) * truth.confidence();
         }
 
         /**
@@ -828,7 +826,7 @@ public final class Cog {
 
         @Override
         public String toString() {
-            return truth + " " + importance + " " + access;
+            return truth + " " + pri + " " + access;
         }
     }
 
@@ -844,7 +842,7 @@ public final class Cog {
          * strength is [0,1] and count >= 0.
          */
         public Truth {
-            strength = dumb.base.Cog.unitize(strength);
+            strength = unitize(strength);
             count = Math.max(0, count);
         }
 
@@ -873,10 +871,10 @@ public final class Cog {
     }
 
     /**
-     * Immutable record for Short-Term (STI) and Long-Term (LTI) Importance.
+     * Immutable record for Short-Term (STI) and Long-Term (LTI) Pri.
      */
     public record Pri(double sti, double lti) {
-        public static final Pri DEFAULT = new Pri(IMPORTANCE_INITIAL_STI, IMPORTANCE_INITIAL_STI * IMPORTANCE_INITIAL_LTI_FACTOR);
+        public static final Pri DEFAULT = new Pri(PRI_INITIAL_STI, PRI_INITIAL_STI * PRI_INITIAL_LTI_FACTOR);
 
         /**
          * Canonical constructor ensures values are [0,1].
@@ -886,35 +884,32 @@ public final class Cog {
             lti = unitize(lti);
         }
 
-        private static double unitize(double v) {
-            return Math.max(0.0, Math.min(1.0, v));
-        }
 
         /**
-         * Returns a new ImportanceValue after applying decay. LTI learns slowly from decayed STI.
+         * Returns a new PriValue after applying decay. LTI learns slowly from decayed STI.
          */
         public Pri decay() {
-            var decayedSti = sti * (1 - IMPORTANCE_STI_DECAY_RATE);
+            var decayedSti = sti * (1 - PRI_STI_DECAY_RATE);
             // LTI decays slower and gains a fraction of the decayed STI value
-            var ltiGain = sti * IMPORTANCE_STI_DECAY_RATE * IMPORTANCE_STI_TO_LTI_RATE; // LTI learns from what STI *lost*
-            var decayedLti = lti * (1 - IMPORTANCE_LTI_DECAY_RATE) + ltiGain;
+            var ltiGain = sti * PRI_STI_DECAY_RATE * PRI_STI_TO_LTI_RATE; // LTI learns from what STI *lost*
+            var decayedLti = lti * (1 - PRI_LTI_DECAY_RATE) + ltiGain;
             return new Pri(decayedSti, decayedLti);
         }
 
         /**
-         * Returns a new ImportanceValue after applying boost. Boost affects STI directly, LTI indirectly.
+         * Returns a new PriValue after applying boost. Boost affects STI directly, LTI indirectly.
          */
         public Pri boost(double boostAmount) {
             if (boostAmount <= 0) return this;
             var boostedSti = unitize(sti + boostAmount); // Additive boost to STI, capped at 1
             // LTI boost is proportional to the STI change and the boost amount itself
-            var ltiBoostFactor = IMPORTANCE_STI_TO_LTI_RATE * Math.abs(boostAmount);
+            var ltiBoostFactor = PRI_STI_TO_LTI_RATE * Math.abs(boostAmount);
             var boostedLti = unitize(lti + (boostedSti - sti) * ltiBoostFactor); // LTI learns based on STI *increase*
             return new Pri(boostedSti, boostedLti);
         }
 
         /**
-         * Calculates combined importance, weighted by a recency factor (applied externally).
+         * Calculates combined pri, weighted by a recency factor (applied externally).
          */
         public double getCurrent(double recencyFactor) {
             // Weighted average, giving more weight to STI modulated by recency
@@ -970,26 +965,26 @@ public final class Cog {
             long now = timeSource.get();
             // Ensure metadata exists and update access time/boost slightly
             var valueRef = storage.computeIfAbsent(canonicalAtom, k -> {
-                var initialValue = Value.DEFAULT.withImportance(new Pri(IMPORTANCE_INITIAL_STI, IMPORTANCE_INITIAL_STI * IMPORTANCE_INITIAL_LTI_FACTOR)).updateTime(now);
+                var initialValue = Value.DEFAULT.withPri(new Pri(PRI_INITIAL_STI, PRI_INITIAL_STI * PRI_INITIAL_LTI_FACTOR)).updateTime(now);
                 updateIndices(k); // Index the new atom when metadata is first created
                 return new AtomicReference<>(initialValue);
             });
             // Apply small access boost even if atom already existed
-            valueRef.updateAndGet(v -> v.boost(IMPORTANCE_BOOST_ON_ACCESS * 0.1, now));
+            valueRef.updateAndGet(v -> v.boost(PRI_BOOST_ON_ACCESS * 0.1, now));
 
             checkMemoryAndTriggerForgetting(); // Trigger forgetting if memory grows too large
             return canonicalAtom;
         }
 
         /**
-         * Retrieves an Atom instance by its unique ID string, boosting its importance.
+         * Retrieves an Atom instance by its unique ID string, boosting its pri.
          */
         public Optional<Atom> getAtom(String id) {
             return Optional.ofNullable(atomsById.get(id)).map(this::boostAndGet);
         }
 
         /**
-         * Retrieves the canonical Atom instance if present, boosting its importance.
+         * Retrieves the canonical Atom instance if present, boosting its pri.
          */
         public Optional<Atom> getAtom(Atom atom) {
             // Use atomsById to ensure we boost the canonical instance
@@ -997,12 +992,12 @@ public final class Cog {
         }
 
         private Atom boostAndGet(Atom atom) {
-            updateValue(atom, v -> v.boost(IMPORTANCE_BOOST_ON_ACCESS, timeSource.get()));
+            updateValue(atom, v -> v.boost(PRI_BOOST_ON_ACCESS, timeSource.get()));
             return atom;
         }
 
         /**
-         * Retrieves the current Value (Truth, Importance, Time) for an Atom.
+         * Retrieves the current Value (Truth, Pri, Time) for an Atom.
          */
         public Optional<Value> value(Atom atom) {
             // Use canonical atom from atomsById map to look up value
@@ -1033,7 +1028,7 @@ public final class Cog {
                     // Calculate revision boost based on confidence change
                     var confidenceDiff = updated.truth.confidence() - current.truth.confidence();
                     var boost = (confidenceDiff > TRUTH_REVISION_CONFIDENCE_THRESHOLD)
-                            ? IMPORTANCE_BOOST_ON_REVISION_MAX * updated.truth.confidence() // Boost proportional to new confidence
+                            ? PRI_BOOST_ON_REVISION_MAX * updated.truth.confidence() // Boost proportional to new confidence
                             : 0.0;
                     return boost > 0 ? updated.boost(boost, now) : updated; // Apply boost if significant change
                 });
@@ -1048,7 +1043,7 @@ public final class Cog {
         }
 
         /**
-         * Boosts the importance of an atom.
+         * Boosts the pri of an atom.
          */
         public void boost(Atom atom, double amount) {
             updateValue(atom, v -> v.boost(amount, timeSource.get()));
@@ -1089,7 +1084,7 @@ public final class Cog {
         public List<Answer> query(Atom pattern) {
             // Ensure pattern exists in the space & boost it slightly
             var queryPattern = add(pattern); // Use canonical instance
-            boost(queryPattern, IMPORTANCE_BOOST_ON_ACCESS * 0.2);
+            boost(queryPattern, PRI_BOOST_ON_ACCESS * 0.2);
 
             // Find candidate atoms using indices
             Stream<Atom> candidateStream;
@@ -1132,7 +1127,7 @@ public final class Cog {
                 // Attempt unification
                 unification.unify(queryPattern, candidate, Bind.EMPTY)
                         .ifPresent(bind -> {
-                            boost(candidate, IMPORTANCE_BOOST_ON_ACCESS); // Boost successful matches
+                            boost(candidate, PRI_BOOST_ON_ACCESS); // Boost successful matches
                             results.add(new Answer(candidate, bind));
                         });
             }
@@ -1144,7 +1139,7 @@ public final class Cog {
 
 
         /**
-         * Decays importance of all atoms and removes ("forgets") those below the importance threshold.
+         * Decays pri of all atoms and removes ("forgets") those below the pri threshold.
          */
         synchronized void decayAndForget() {
             final long now = timeSource.get();
@@ -1168,21 +1163,21 @@ public final class Cog {
                 var decayedValue = valueRef.updateAndGet(v -> v.decay(now));
                 decayCount++;
 
-                // Check if eligible for removal based on importance (if not protected)
-                if (!isProtected && decayedValue.getCurrentImportance(now) < IMPORTANCE_MIN_FORGET_THRESHOLD) {
+                // Check if eligible for removal based on pri (if not protected)
+                if (!isProtected && decayedValue.getCurrentPri(now) < PRI_MIN_FORGET_THRESHOLD) {
                     candidatesForRemoval.add(atom);
                 }
             }
 
             var removedCount = 0;
-            // 2. Forget if memory pressure exists or a significant number of low-importance atoms found
+            // 2. Forget if memory pressure exists or a significant number of low-pri atoms found
             var targetSize = FORGETTING_MAX_MEM_SIZE_TRIGGER * FORGETTING_TARGET_MEM_SIZE_FACTOR / 100;
             var memoryPressure = initialSize > FORGETTING_MAX_MEM_SIZE_TRIGGER;
-            var significantLowImportance = candidatesForRemoval.size() > initialSize * 0.05; // e.g., > 5% are candidates
+            var significantLowPri = candidatesForRemoval.size() > initialSize * 0.05; // e.g., > 5% are candidates
 
-            if (!candidatesForRemoval.isEmpty() && (memoryPressure || significantLowImportance || initialSize > targetSize)) {
-                // Sort candidates by current importance (lowest first)
-                candidatesForRemoval.sort(Comparator.comparingDouble(atom -> valueOrDefault(atom).getCurrentImportance(now)));
+            if (!candidatesForRemoval.isEmpty() && (memoryPressure || significantLowPri || initialSize > targetSize)) {
+                // Sort candidates by current pri (lowest first)
+                candidatesForRemoval.sort(Comparator.comparingDouble(atom -> valueOrDefault(atom).getCurrentPri(now)));
 
                 // Determine how many to remove
                 var removalTargetCount = memoryPressure
@@ -1192,8 +1187,8 @@ public final class Cog {
                 var actuallyRemoved = 0;
                 for (var atomToRemove : candidatesForRemoval) {
                     if (actuallyRemoved >= removalTargetCount) break;
-                    // Re-check threshold, as importance might change slightly due to time effects
-                    if (valueOrDefault(atomToRemove).getCurrentImportance(now) < IMPORTANCE_MIN_FORGET_THRESHOLD) {
+                    // Re-check threshold, as pri might change slightly due to time effects
+                    if (valueOrDefault(atomToRemove).getCurrentPri(now) < PRI_MIN_FORGET_THRESHOLD) {
                         if (removeAtomInternal(atomToRemove)) {
                             actuallyRemoved++;
                         }
@@ -1203,7 +1198,7 @@ public final class Cog {
             }
 
             if (removedCount > 0 || decayCount > 0 && initialSize > 10) { // Avoid logging spam for tiny spaces
-                System.out.printf("Memory Maintenance: Decayed %d atoms. Removed %d low-importance atoms. Size %d -> %d.%n",
+                System.out.printf("Memory Maintenance: Decayed %d atoms. Removed %d low-pri atoms. Size %d -> %d.%n",
                         decayCount, removedCount, initialSize, storage.size());
             }
         }
@@ -1925,11 +1920,11 @@ public final class Cog {
                         ; (= (tail (Cons $h $t)) $t)
                     """);
 
-            // Ensure core symbols have high confidence/importance from the start
+            // Ensure core symbols have high confidence/pri from the start
             Stream.of(SYMBOL_EQ, SYMBOL_COLON, SYMBOL_ARROW, SYMBOL_TYPE, SYMBOL_TRUE, SYMBOL_FALSE, SYMBOL_NIL, SYMBOL_SELF)
                     .forEach(sym -> {
                         cog.mem.updateTruth(sym, Truth.TRUE); // Mark as definitely existing
-                        cog.mem.boost(sym, 1); // Max importance boost initially
+                        cog.mem.boost(sym, 1); // Max pri boost initially
                     });
         }
 
@@ -2234,14 +2229,14 @@ public final class Cog {
         }
 
         /**
-         * Adds the goal to the Memory and boosts its importance.
+         * Adds the goal to the Memory and boosts its pri.
          */
         private void initializeGoal(Atom goalPattern) {
             // Represent the goal as a fact `(Goal <goal_pattern>)`
             Atom goalAtom = cog.add(cog.E(GOAL_PRED, goalPattern));
-            cog.mem.boost(goalAtom, IMPORTANCE_BOOST_ON_GOAL_FOCUS);
+            cog.mem.boost(goalAtom, PRI_BOOST_ON_GOAL_FOCUS);
             // Also boost the pattern itself slightly
-            cog.mem.boost(goalPattern, IMPORTANCE_BOOST_ON_GOAL_FOCUS * 0.8);
+            cog.mem.boost(goalPattern, PRI_BOOST_ON_GOAL_FOCUS * 0.8);
             System.out.println("Agent: Goal initialized -> " + goalAtom);
         }
 
@@ -2265,12 +2260,12 @@ public final class Cog {
                 // Handle empty perception? Return previous state or a default 'Unknown' state?
                 return currentAgentStateAtom != null ? currentAgentStateAtom : cog.S("State_Unknown");
             }
-            // Add each percept as a fact with high truth and boost importance
+            // Add each percept as a fact with high truth and boost pri
             List<String> perceptIDs = Collections.synchronizedList(new ArrayList<>()); // For stable hashing
             percepts.forEach(p -> {
                 var factAtom = cog.add(p); // Add the percept atom itself
                 cog.mem.updateTruth(factAtom, new Truth(1.0, AGENT_DEFAULT_PERCEPTION_COUNT)); // High confidence perception
-                cog.mem.boost(factAtom, IMPORTANCE_BOOST_ON_PERCEPTION);
+                cog.mem.boost(factAtom, PRI_BOOST_ON_PERCEPTION);
                 perceptIDs.add(factAtom.id()); // Collect IDs for state hashing
             });
 
@@ -2283,7 +2278,7 @@ public final class Cog {
             // Ensure this state symbol exists and is marked as current/true
             cog.add(stateAtom);
             cog.mem.updateTruth(stateAtom, Truth.TRUE);
-            cog.mem.boost(stateAtom, IMPORTANCE_BOOST_ON_PERCEPTION); // Boost the state symbol itself
+            cog.mem.boost(stateAtom, PRI_BOOST_ON_PERCEPTION); // Boost the state symbol itself
 
             return stateAtom;
         }
@@ -2363,7 +2358,7 @@ public final class Cog {
             Atom implication = cog.add(cog.E(IMPLIES_PRED, sequence, nextState));
             // Update truth based on observation count (simple reinforcement)
             cog.mem.updateTruth(implication, new Truth(1.0, AGENT_LEARNED_RULE_COUNT)); // Reinforce this transition
-            cog.mem.boost(implication, IMPORTANCE_BOOST_ON_ACCESS * 1.2); // Boost learned rules slightly more
+            cog.mem.boost(implication, PRI_BOOST_ON_ACCESS * 1.2); // Boost learned rules slightly more
 
             // 2. Learn/Update Utility Rule: (= (Utility <action>) <value>)
             // Q(s,a) = Q(s,a) + alpha * (reward + gamma * max_a'(Q(s',a')) - Q(s,a))
@@ -2398,7 +2393,7 @@ public final class Cog {
 
             // Set high truth for the newly learned/updated rule
             cog.mem.updateTruth(newUtilityRule, Truth.TRUE); // Mark this as the current best utility estimate
-            cog.mem.boost(newUtilityRule, IMPORTANCE_BOOST_ON_ACCESS * 1.5); // Boost utility rules strongly
+            cog.mem.boost(newUtilityRule, PRI_BOOST_ON_ACCESS * 1.5); // Boost utility rules strongly
 
             // Optional: Decay or remove the *old* utility rule atom if it existed
             // currentUtilityValueAtomOpt.ifPresent(oldValAtom -> {
