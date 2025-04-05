@@ -99,7 +99,7 @@ public final class Cog {
         //control
         "If",
         //arithmetic
-        "+", "-", "*", "/", "RandomFloat"
+        "+", "-", "*", "/", "RandomFloat",
         //comparison
         "==", ">", "<", "IsNil",
         //list
@@ -877,7 +877,7 @@ public final class Cog {
         }
 
         public Is<Function<List<Atom>, Optional<Atom>>> isFn(String name, Function<List<Atom>, Optional<Atom>> fn) {
-            var i = new Is<Function<List<Atom>, Optional<Atom>>>(name, fn);
+            Is<Function<List<Atom>, Optional<Atom>>> i = new Is<>(name, fn);
             add(i); // Add the IsFn atom itself to memory
             return i;
         }
