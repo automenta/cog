@@ -52,7 +52,7 @@ import java.util.stream.Stream;
  * - **Modularity:** Achieved via nested static classes (Memory, Inference, Agent) within this single file.
  * - **Completeness:** Integrates core PLN reasoning, attention, learning, planning, temporal logic, and HOL basics.
  * - **Autonomy:** Includes a basic agent control loop capable of interacting with an environment.
- * - **Cognitive Power:** Combines probabilistic reasoning, temporal concepts, planning, and basic unification.
+ * - **Cognitive Power:** Combines probabilistic reasoning, temporal concepts, planning, and basic unify.
  * - **Efficiency:** Uses indexing, importance-based heuristics, and concurrent collections.
  * - **Elegance & Extensibility:** Clear structure, modern Java usage, designed for adding features.
  * - **Self-Documentation:** Clear naming, Javadoc, and logical structure minimize external documentation needs.
@@ -64,10 +64,10 @@ import java.util.stream.Stream;
  * - **Atom Importance:** Explicit STI/LTI fields within `Atom`, updated via boost/decay methods. (Model from A/D/F)
  * - **Forgetting:** Periodic and size-triggered mechanism based on STI/LTI thresholds, protecting essential atoms. (Combined D/F/A approach)
  * - **Inference:** Robust Deduction/Inversion using term probabilities, Modus Ponens. Forward chaining uses importance-prioritized queue. (Synthesized C/E/F/D)
- * - **Backward Chaining:** Supports querying with unification (`QueryResult`) and planning (`planToActionSequence`). (Inspired by F/C/E)
+ * - **Backward Chaining:** Supports querying with unify (`QueryResult`) and planning (`planToActionSequence`). (Inspired by F/C/E)
  * - **Planning:** Goal-directed BC seeking action sequences, leveraging temporal/causal links, with utility/random fallback. (Synthesized F/C/E/D)
  * - **Temporal Logic:** Includes `TimeSpec` record, Event Calculus link types (`INITIATES`, etc.), and temporal reasoning in inference/planning. (Comprehensive synthesis)
- * - **Higher-Order Logic:** `VariableNode`, `ForAll`/`Exists` links, basic unification integrated into inference. (Synthesized C/F)
+ * - **Higher-Order Logic:** `VariableNode`, `ForAll`/`Exists` links, basic unify integrated into inference. (Synthesized C/F)
  * - **Agent Control:** Encapsulated `AgentController` with a perceive-reason-select-act-learn loop. (Inspired by F/D)
  * - **Environment API:** Clear interfaces (`Environment`, `PerceptionResult`, `ActionResult`). (Similar to F)
  * - **Learning:** Learns state transitions (`Seq(State,Action)->Next`) and reward associations (State/Action -> Reward/Utility). (Synthesized C/F/D/E)
@@ -197,11 +197,11 @@ public class UltimatePLN {
 
     /**
      * Performs backward chaining to query the truth value of a target Atom pattern.
-     * Supports variables and unification.
+     * Supports variables and unify.
      *
      * @param queryAtom The Atom pattern to query (can contain variables).
      * @param maxDepth Maximum recursion depth.
-     * @return A list of bindings (variable assignments) and the corresponding inferred Atom for each successful proof path.
+     * @return A list of bind (variable assignments) and the corresponding inferred Atom for each successful proof path.
      */
     public List<QueryResult> query(Atom queryAtom, int maxDepth) {
         return inference.backwardChain(queryAtom, maxDepth);
@@ -810,18 +810,18 @@ public class UltimatePLN {
              return inferencesMade;
          }
 
-        /** Performs backward chaining query with unification. */
+        /** Performs backward chaining query with unify. */
         public List<QueryResult> backwardChain(Atom queryAtom, int maxDepth) {
              return backwardChainRecursive(queryAtom, maxDepth, new HashMap<>(), new HashSet<>());
         }
 
-        private List<QueryResult> backwardChainRecursive(Atom queryAtom, int depth, Map<String, String> bindings, Set<String> visited) {
-             // Apply current bindings to the query before proceeding
-             Optional<Atom> currentQueryOpt = substitute(queryAtom, bindings);
+        private List<QueryResult> backwardChainRecursive(Atom queryAtom, int depth, Map<String, String> bind, Set<String> visited) {
+             // Apply current bind to the query before proceeding
+             Optional<Atom> currentQueryOpt = substitute(queryAtom, bind);
              if (currentQueryOpt.isEmpty()) return Collections.emptyList(); // Substitution failed
              Atom currentQuery = currentQueryOpt.get();
 
-             String visitedId = currentQuery.id + bindings.hashCode(); // Unique ID for state + bindings
+             String visitedId = currentQuery.id + bind.hashCode(); // Unique ID for state + bind
              // System.out.println("  ".repeat(DEFAULT_MAX_BC_DEPTH - depth) + "BC: Query " + currentQuery.id + " Depth " + depth);
 
              if (depth <= 0 || visited.contains(visitedId)) {
@@ -836,7 +836,7 @@ public class UltimatePLN {
              kb.getAtom(currentQuery.id).ifPresent(match -> {
                  if (match.tv.getConfidence() > MIN_CONFIDENCE_THRESHOLD) {
                      // System.out.println("  ".repeat(DEFAULT_MAX_BC_DEPTH - depth) + "-> Direct Match: " + match);
-                     results.add(new QueryResult(bindings, match));
+                     results.add(new QueryResult(bind, match));
                  }
              });
 
@@ -846,22 +846,22 @@ public class UltimatePLN {
              if (currentQuery instanceof Link && currentQuery.targets.size() == 2 &&
                  (currentQuery.type == Link.LinkType.INHERITANCE || currentQuery.type == Link.LinkType.PREDICTIVE_IMPLICATION))
              {
-                 results.addAll(tryDeductionBackward(currentQuery, depth, bindings, visited));
+                 results.addAll(tryDeductionBackward(currentQuery, depth, bind, visited));
              }
 
              // Try Inversion Backward: If query is B->A, seek A->B
              if (currentQuery instanceof Link && currentQuery.targets.size() == 2 &&
                  (currentQuery.type == Link.LinkType.INHERITANCE || currentQuery.type == Link.LinkType.PREDICTIVE_IMPLICATION))
              {
-                  results.addAll(tryInversionBackward(currentQuery, depth, bindings, visited));
+                  results.addAll(tryInversionBackward(currentQuery, depth, bind, visited));
              }
 
              // Try Modus Ponens Backward: If query is B, seek A and A->B
-             results.addAll(tryModusPonensBackward(currentQuery, depth, bindings, visited));
+             results.addAll(tryModusPonensBackward(currentQuery, depth, bind, visited));
 
 
              // Try ForAll Instantiation: If query P(c) matches body ForAll($X, P($X))
-             results.addAll(tryForAllInstantiation(currentQuery, depth, bindings, visited));
+             results.addAll(tryForAllInstantiation(currentQuery, depth, bind, visited));
 
              // TODO: Try Temporal Rules Backward (e.g., HoldsAt, Initiates)
 
@@ -872,7 +872,7 @@ public class UltimatePLN {
 
         // --- Backward Rule Helpers (Sketch) ---
 
-        private List<QueryResult> tryDeductionBackward(Atom queryAC, int depth, Map<String, String> bindings, Set<String> visited) {
+        private List<QueryResult> tryDeductionBackward(Atom queryAC, int depth, Map<String, String> bind, Set<String> visited) {
             List<QueryResult> results = new ArrayList<>();
             Link linkAC = (Link) queryAC;
             String aId = linkAC.targets.get(0); String cId = linkAC.targets.get(1);
@@ -887,15 +887,15 @@ public class UltimatePLN {
                   Atom subgoalBC = new Link(linkAC.type, List.of(bId, cId), TruthValue.UNKNOWN, null);
 
                   // Recurse on first subgoal A->B
-                  List<QueryResult> resultsAB = backwardChainRecursive(subgoalAB, depth - 1, bindings, visited);
+                  List<QueryResult> resultsAB = backwardChainRecursive(subgoalAB, depth - 1, bind, visited);
                   for (QueryResult resAB : resultsAB) {
-                      // Recurse on second subgoal B->C with updated bindings
-                      List<QueryResult> resultsBC = backwardChainRecursive(subgoalBC, depth - 1, resAB.bindings, visited);
+                      // Recurse on second subgoal B->C with updated bind
+                      List<QueryResult> resultsBC = backwardChainRecursive(subgoalBC, depth - 1, resAB.bind, visited);
                       for (QueryResult resBC : resultsBC) {
                           // Apply deduction forward to get confidence for A->C
                           deduction((Link)resAB.inferredAtom, (Link)resBC.inferredAtom).ifPresent(inferredAC -> {
-                               // Check if inferredAC unifies with original queryAC using final bindings
-                               unify(queryAC, inferredAC, resBC.bindings).ifPresent(finalBindings ->
+                               // Check if inferredAC unifies with original queryAC using final bind
+                               unify(queryAC, inferredAC, resBC.bind).ifPresent(finalBindings ->
                                    results.add(new QueryResult(finalBindings, inferredAC))
                                );
                           });
@@ -905,7 +905,7 @@ public class UltimatePLN {
             return results;
         }
 
-        private List<QueryResult> tryInversionBackward(Atom queryBA, int depth, Map<String, String> bindings, Set<String> visited) {
+        private List<QueryResult> tryInversionBackward(Atom queryBA, int depth, Map<String, String> bind, Set<String> visited) {
              List<QueryResult> results = new ArrayList<>();
              Link linkBA = (Link) queryBA;
              String bId = linkBA.targets.get(0); String aId = linkBA.targets.get(1);
@@ -914,10 +914,10 @@ public class UltimatePLN {
              Atom subgoalAB = new Link(linkBA.type, List.of(aId, bId), TruthValue.UNKNOWN, null);
 
              // Recurse on subgoal A->B
-             List<QueryResult> resultsAB = backwardChainRecursive(subgoalAB, depth - 1, bindings, visited);
+             List<QueryResult> resultsAB = backwardChainRecursive(subgoalAB, depth - 1, bind, visited);
              for (QueryResult resAB : resultsAB) {
                  inversion((Link)resAB.inferredAtom).ifPresent(inferredBA -> {
-                      unify(queryBA, inferredBA, resAB.bindings).ifPresent(finalBindings ->
+                      unify(queryBA, inferredBA, resAB.bind).ifPresent(finalBindings ->
                           results.add(new QueryResult(finalBindings, inferredBA))
                       );
                  });
@@ -925,7 +925,7 @@ public class UltimatePLN {
              return results;
         }
 
-         private List<QueryResult> tryModusPonensBackward(Atom queryB, int depth, Map<String, String> bindings, Set<String> visited) {
+         private List<QueryResult> tryModusPonensBackward(Atom queryB, int depth, Map<String, String> bind, Set<String> visited) {
              List<QueryResult> results = new ArrayList<>();
              String bId = queryB.id;
 
@@ -938,10 +938,10 @@ public class UltimatePLN {
                    // Create subgoal pattern A
                    kb.getAtom(aId).ifPresent(subgoalA -> { // A needs to be a concrete Atom pattern here
                        // Recurse on subgoal A
-                       List<QueryResult> resultsA = backwardChainRecursive(subgoalA, depth - 1, bindings, visited);
+                       List<QueryResult> resultsA = backwardChainRecursive(subgoalA, depth - 1, bind, visited);
                        for (QueryResult resA : resultsA) {
                             // Recurse on the link A->B itself to confirm its confidence
-                            List<QueryResult> resultsAB = backwardChainRecursive(linkAB, depth - 1, resA.bindings, visited);
+                            List<QueryResult> resultsAB = backwardChainRecursive(linkAB, depth - 1, resA.bind, visited);
                             for (QueryResult resAB : resultsAB) {
                                  // Apply Modus Ponens forward (simulated - just get TV)
                                  // Need a way to calculate the resulting TV for B without modifying KB here
@@ -956,7 +956,7 @@ public class UltimatePLN {
 
                                  if(inferredTV_B.getConfidence() > MIN_CONFIDENCE_THRESHOLD) {
                                      Atom inferredB = queryB.withTruthValue(inferredTV_B); // Create B atom with inferred TV
-                                      unify(queryB, inferredB, resAB.bindings).ifPresent(finalBindings ->
+                                      unify(queryB, inferredB, resAB.bind).ifPresent(finalBindings ->
                                          results.add(new QueryResult(finalBindings, inferredB))
                                      );
                                  }
@@ -967,19 +967,19 @@ public class UltimatePLN {
              return results;
          }
 
-          private List<QueryResult> tryForAllInstantiation(Atom queryInstance, int depth, Map<String, String> bindings, Set<String> visited) {
+          private List<QueryResult> tryForAllInstantiation(Atom queryInstance, int depth, Map<String, String> bind, Set<String> visited) {
              List<QueryResult> results = new ArrayList<>();
              kb.getLinksByType(Link.LinkType.FOR_ALL).forEach(forAllLink -> {
                  if (forAllLink.targets.size() >= 2) {
                      Atom bodyPattern = kb.getAtom(forAllLink.targets.get(forAllLink.targets.size() - 1)).orElse(null);
                      if (bodyPattern != null) {
-                         unify(bodyPattern, queryInstance, bindings).ifPresent(finalBindings -> {
+                         unify(bodyPattern, queryInstance, bind).ifPresent(finalBindings -> {
                               // Confirm the ForAll link itself has sufficient confidence
                               List<QueryResult> forAllResults = backwardChainRecursive(forAllLink, depth-1, finalBindings, visited);
                               for(QueryResult resForAll : forAllResults) {
                                   // If rule holds, the instance is supported with the rule's TV
                                   Atom supportedInstance = queryInstance.withTruthValue(resForAll.inferredAtom.tv);
-                                  results.add(new QueryResult(resForAll.bindings, supportedInstance));
+                                  results.add(new QueryResult(resForAll.bind, supportedInstance));
                               }
                          });
                      }
@@ -1522,7 +1522,7 @@ public class UltimatePLN {
     }
 
     /** Record for Backward Chaining results. */
-    public static record QueryResult(Map<String, String> bindings, Atom inferredAtom) {}
+    public static record QueryResult(Map<String, String> bind, Atom inferredAtom) {}
 
 
     // ========================================================================

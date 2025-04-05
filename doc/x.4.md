@@ -30,7 +30,7 @@ import java.util.stream.Stream;
 *     predicted outcomes.
 * 6.  **Foundation for Higher-Order Logic:** Includes `VariableNode` and quantifier
 *     link types (`FOR_ALL`, `EXISTS`) to support future extensions involving
-*     variables and schema manipulation. Basic unification is implicitly handled
+*     variables and schema manipulation. Basic unify is implicitly handled
 *     in pattern matching.
 * 7.  **Scalability Improvements:** Introduces indexing (`linksByType`,
 *     `linksByTarget`) to accelerate inference searches compared to exhaustive scans.

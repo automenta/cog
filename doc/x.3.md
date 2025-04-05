@@ -22,7 +22,7 @@ import java.util.stream.IntStream;
 *   (`Initiates`, `Terminates`, `HoldsAt`, `PredictiveImplication`, `SequentialAnd`)
 *   for reasoning about events, states, and actions over time.
 * - **Higher-Order Logic (Basic):** Includes support for Variables and Quantifiers (`ForAll`, `Exists`)
-*   within the AtomSpace structure, enabling more expressive knowledge representation and basic unification.
+*   within the AtomSpace structure, enabling more expressive knowledge representation and basic unify.
 * - **Scalability Improvements:** Introduces basic indexing (`linksByType`, `incomingLinks`)
 *   to accelerate premise finding during inference, mitigating exhaustive searches.
 *
@@ -278,7 +278,7 @@ import java.util.stream.IntStream;
     /**
      * Performs PLN Deduction: (A -> B), (B -> C) => (A -> C).
      * Uses simplified probabilistic formula, optionally considering term probabilities.
-     * Handles basic Variable unification.
+     * Handles basic Variable unify.
      *
      * @param linkAB Inheritance(A, B) or PredictiveImplication(A, B)
      * @param linkBC Inheritance(B, C) or PredictiveImplication(B, C) (must match linkAB type)
@@ -300,19 +300,19 @@ import java.util.stream.IntStream;
 
         // --- Basic Unification ---
         // Check if the intermediate concepts (B) match or can be unified.
-        // This is a very basic check; real unification is more complex.
-        Map<String, String> bindings = new HashMap<>();
-        if (!canUnify(bId1, bId2, bindings)) {
+        // This is a very basic check; real unify is more complex.
+        Map<String, String> bind = new HashMap<>();
+        if (!canUnify(bId1, bId2, bind)) {
              return null; // Intermediate concepts don't match
         }
-        // Apply bindings if needed (simplistic: assumes B is the only potential variable here)
+        // Apply bind if needed (simplistic: assumes B is the only potential variable here)
         // A real system needs full substitution across A, B, C.
-        String unifiedBId = applyBindings(bId1, bindings); // or bId2, should be same after unify
-        if (!unifiedBId.equals(applyBindings(bId2, bindings))) return null; // Sanity check
+        String unifiedBId = applyBindings(bId1, bind); // or bId2, should be same after unify
+        if (!unifiedBId.equals(applyBindings(bId2, bind))) return null; // Sanity check
 
         // Get potentially bound A and C
-        String boundAId = applyBindings(aId, bindings);
-        String boundCId = applyBindings(cId, bindings);
+        String boundAId = applyBindings(aId, bind);
+        String boundCId = applyBindings(cId, bind);
 
         Atom nodeA = getAtom(boundAId); // Use bound IDs
         Atom nodeB = getAtom(unifiedBId);
@@ -476,56 +476,56 @@ import java.util.stream.IntStream;
     }
 
     /**
-     * Basic unification check between two Atom IDs.
+     * Basic unify check between two Atom IDs.
      * Can bind a variable to a concrete ID or another variable.
-     * Does not handle complex cases like function unification or occurs check.
+     * Does not handle complex cases like function unify or occurs check.
      *
      * @param id1 First ID.
      * @param id2 Second ID.
-     * @param bindings Map to store variable bindings (Variable ID -> Concrete ID).
-     * @return true if unification is possible, false otherwise.
+     * @param bind Map to store variable bind (Variable ID -> Concrete ID).
+     * @return true if unify is possible, false otherwise.
      */
-    private boolean canUnify(String id1, String id2, Map<String, String> bindings) {
-        id1 = resolveBinding(id1, bindings); // Follow existing bindings
-        id2 = resolveBinding(id2, bindings);
+    private boolean canUnify(String id1, String id2, Map<String, String> bind) {
+        id1 = resolveBinding(id1, bind); // Follow existing bind
+        id2 = resolveBinding(id2, bind);
 
         if (id1.equals(id2)) {
             return true; // Already identical or bound to the same thing
         }
         if (isVariable(id1)) {
-            bindings.put(id1, id2); // Bind var1 to id2
+            bind.put(id1, id2); // Bind var1 to id2
             return true;
         }
         if (isVariable(id2)) {
-            bindings.put(id2, id1); // Bind var2 to id1
+            bind.put(id2, id1); // Bind var2 to id1
             return true;
         }
         // Neither is a variable, and they are different concrete IDs
         return false;
     }
 
-    /** Follows a chain of bindings to find the ultimate value for an ID. */
-    private String resolveBinding(String id, Map<String, String> bindings) {
-        while (isVariable(id) && bindings.containsKey(id)) {
-            id = bindings.get(id);
+    /** Follows a chain of bind to find the ultimate value for an ID. */
+    private String resolveBinding(String id, Map<String, String> bind) {
+        while (isVariable(id) && bind.containsKey(id)) {
+            id = bind.get(id);
         }
         return id;
     }
 
-    /** Applies bindings to an ID. If the ID is a variable with a binding, returns the bound ID. */
-    private String applyBindings(String id, Map<String, String> bindings) {
-         return resolveBinding(id, bindings);
+    /** Applies bind to an ID. If the ID is a variable with a binding, returns the bound ID. */
+    private String applyBindings(String id, Map<String, String> bind) {
+         return resolveBinding(id, bind);
     }
 
     /**
-     * Applies bindings to a list of target IDs.
+     * Applies bind to a list of target IDs.
      * @param targetIds List of Atom IDs.
-     * @param bindings Current variable bindings.
+     * @param bind Current variable bind.
      * @return New list with bound IDs.
      */
-    private List<String> applyBindingsToList(List<String> targetIds, Map<String, String> bindings) {
+    private List<String> applyBindingsToList(List<String> targetIds, Map<String, String> bind) {
         return targetIds.stream()
-                        .map(id -> applyBindings(id, bindings))
+                        .map(id -> applyBindings(id, bind))
                         .collect(Collectors.toList());
     }
 
@@ -626,16 +626,16 @@ import java.util.stream.IntStream;
      */
     public Atom backwardChain(String targetId, int maxDepth) {
         System.out.println("\n--- Starting Backward Chaining (Target: " + targetId + ", Max Depth: " + maxDepth + ") ---");
-        Map<String, String> initialBindings = new HashMap<>();
+        Map<String, String> initialBind = new HashMap<>();
         // We pass an empty set for visited nodes in the current path to detect cycles.
-        Atom result = backwardChainRecursive(targetId, initialBindings, maxDepth, new HashSet<>());
+        Atom result = backwardChainRecursive(targetId, initialBind, maxDepth, new HashSet<>());
         System.out.println("--- Backward Chaining Finished ---");
         return result;
     }
 
-    private Atom backwardChainRecursive(String targetId, Map<String, String> bindings, int depth, Set<String> visitedInPath) {
-        String boundTargetId = applyBindings(targetId, bindings);
-        // System.out.println("  ".repeat(MAX_BACKWARD_CHAIN_DEPTH - depth) + "BC Seek: " + boundTargetId + " (Depth " + depth + ", Bindings: " + bindings + ")");
+    private Atom backwardChainRecursive(String targetId, Map<String, String> bind, int depth, Set<String> visitedInPath) {
+        String boundTargetId = applyBindings(targetId, bind);
+        // System.out.println("  ".repeat(MAX_BACKWARD_CHAIN_DEPTH - depth) + "BC Seek: " + boundTargetId + " (Depth " + depth + ", Bindings: " + bind + ")");
 
         if (depth <= 0) {
             // System.out.println("  ".repeat(MAX_BACKWARD_CHAIN_DEPTH - depth + 1) + "-> Max depth reached.");
@@ -662,19 +662,19 @@ import java.util.stream.IntStream;
 
         // 1. Can Deduction produce the target? (Target must be A->C or Pred(A,C))
         //    Find rules B->C and recursively seek A->B.
-        findSupportViaDeduction(boundTargetId, bindings, depth, visitedInPath, supportingEvidence);
+        findSupportViaDeduction(boundTargetId, bind, depth, visitedInPath, supportingEvidence);
 
         // 2. Can Inversion produce the target? (Target must be B->A or Pred(B,A))
         //    Find rule A->B and recursively seek A and B nodes.
-        findSupportViaInversion(boundTargetId, bindings, depth, visitedInPath, supportingEvidence);
+        findSupportViaInversion(boundTargetId, bind, depth, visitedInPath, supportingEvidence);
 
         // 3. Can Temporal Rules produce the target? (e.g., Target is HoldsAt(F, T2))
         //    Find rule InitiatesAt(F, T1) and check persistence/termination.
-        findSupportViaTemporal(boundTargetId, bindings, depth, visitedInPath, supportingEvidence);
+        findSupportViaTemporal(boundTargetId, bind, depth, visitedInPath, supportingEvidence);
 
         // 4. Can Quantifier Instantiation produce the target? (Target is P(a))
         //    Find rule ForAll(X, P(X)) and unify.
-        findSupportViaQuantifiers(boundTargetId, bindings, depth, visitedInPath, supportingEvidence);
+        findSupportViaQuantifiers(boundTargetId, bind, depth, visitedInPath, supportingEvidence);
 
 
         // --- Combine Evidence (Revision) ---
@@ -711,7 +711,7 @@ import java.util.stream.IntStream;
 
     // --- Backward Chaining Rule Helpers (Placeholders/Simplified) ---
 
-    private void findSupportViaDeduction(String targetAC_Id, Map<String, String> bindings, int depth, Set<String> visitedInPath, List<Atom> supportingEvidence) {
+    private void findSupportViaDeduction(String targetAC_Id, Map<String, String> bind, int depth, Set<String> visitedInPath, List<Atom> supportingEvidence) {
         // Target must be Link(A, C) type (Inheritance or Predictive)
         Optional<ParsedLink> parsedTarget = ParsedLink.parse(targetAC_Id);
         if (!parsedTarget.isPresent() || parsedTarget.get().targets.size() != 2 ||
@@ -730,7 +730,7 @@ import java.util.stream.IntStream;
             .filter(link -> link instanceof Link && ((Link)link).targets.size() == 2)
             .filter(link -> {
                 // Check if link target C matches targetC (potentially unifying)
-                Map<String, String> tempBindings = new HashMap<>(bindings);
+                Map<String, String> tempBindings = new HashMap<>(bind);
                 return canUnify(((Link)link).targets.get(1), targetC, tempBindings);
             })
             .map(atom -> atom.id)
@@ -744,8 +744,8 @@ import java.util.stream.IntStream;
             String potentialB = linkBC.targets.get(0);
 
             // Create the required premise ID: A->B (with potentially bound A)
-            Map<String, String> currentBindings = new HashMap<>(bindings);
-            if (!canUnify(linkBC.targets.get(1), targetC, currentBindings)) continue; // Re-check unification for safety
+            Map<String, String> currentBindings = new HashMap<>(bind);
+            if (!canUnify(linkBC.targets.get(1), targetC, currentBindings)) continue; // Re-check unify for safety
 
             String boundTargetA = applyBindings(targetA, currentBindings);
             String premiseAB_Id = Link.generateIdStatic(targetType, Arrays.asList(boundTargetA, potentialB));
@@ -757,21 +757,21 @@ import java.util.stream.IntStream;
                 // Found support! Perform deduction to estimate strength for targetAC
                 Link inferredAC = deduction((Link) premiseAB_Atom, linkBC, true);
                 if (inferredAC != null) {
-                    // Check if the inferred conclusion *actually* matches the original target after bindings
+                    // Check if the inferred conclusion *actually* matches the original target after bind
                     Map<String, String> finalBindings = new HashMap<>(currentBindings); // Bindings might update during recursion
                     if (canUnify(inferredAC.id, targetAC_Id, finalBindings)) {
                          // System.out.println("  ".repeat(MAX_BACKWARD_CHAIN_DEPTH - depth + 1) + "-> Supported by Deduction via B=" + potentialB);
                          // Add the *inferred* atom as evidence. The caller will merge TVs.
                          supportingEvidence.add(inferredAC);
-                         // Update bindings based on successful path
-                         bindings.putAll(finalBindings);
+                         // Update bind based on successful path
+                         bind.putAll(finalBindings);
                     }
                 }
             }
         }
     }
 
-    private void findSupportViaInversion(String targetBA_Id, Map<String, String> bindings, int depth, Set<String> visitedInPath, List<Atom> supportingEvidence) {
+    private void findSupportViaInversion(String targetBA_Id, Map<String, String> bind, int depth, Set<String> visitedInPath, List<Atom> supportingEvidence) {
          // Target must be Link(B, A) type (Inheritance or Predictive)
         Optional<ParsedLink> parsedTarget = ParsedLink.parse(targetBA_Id);
         if (!parsedTarget.isPresent() || parsedTarget.get().targets.size() != 2 ||
@@ -786,24 +786,24 @@ import java.util.stream.IntStream;
         String premiseAB_Id_Pattern = Link.generateIdStatic(targetType, Arrays.asList(targetA, targetB)); // May contain variables
 
         // Recursively seek premise A->B
-        Atom premiseAB_Atom = backwardChainRecursive(premiseAB_Id_Pattern, bindings, depth - 1, visitedInPath);
+        Atom premiseAB_Atom = backwardChainRecursive(premiseAB_Id_Pattern, bind, depth - 1, visitedInPath);
 
         if (premiseAB_Atom instanceof Link) {
             // Found premise. Perform inversion.
             Link inferredBA = inversion((Link) premiseAB_Atom);
             if (inferredBA != null) {
-                 // Check if the inferred conclusion matches the original target after bindings
-                 Map<String, String> finalBindings = new HashMap<>(bindings);
+                 // Check if the inferred conclusion matches the original target after bind
+                 Map<String, String> finalBindings = new HashMap<>(bind);
                  if (canUnify(inferredBA.id, targetBA_Id, finalBindings)) {
                     // System.out.println("  ".repeat(MAX_BACKWARD_CHAIN_DEPTH - depth + 1) + "-> Supported by Inversion from " + premiseAB_Atom.id);
                     supportingEvidence.add(inferredBA);
-                    bindings.putAll(finalBindings);
+                    bind.putAll(finalBindings);
                  }
             }
         }
     }
 
-     private void findSupportViaTemporal(String targetId, Map<String, String> bindings, int depth, Set<String> visitedInPath, List<Atom> supportingEvidence) {
+     private void findSupportViaTemporal(String targetId, Map<String, String> bind, int depth, Set<String> visitedInPath, List<Atom> supportingEvidence) {
         // Example: Target is HoldsAt(F, T2)
         Optional<ParsedLink> parsedTarget = ParsedLink.parse(targetId);
         if (!parsedTarget.isPresent() || parsedTarget.get().type != LinkType.HOLDS_AT || parsedTarget.get().targets.size() != 2) {
@@ -819,18 +819,18 @@ import java.util.stream.IntStream;
         // This requires searching linksByType(INITIATES) and checking time. Simplified here.
         // Let's assume we find a potential initiation link:
         // String initiatesLinkId = ... search ...;
-        // Atom initiatesLinkAtom = backwardChainRecursive(initiatesLinkId, bindings, depth - 1, visitedInPath);
+        // Atom initiatesLinkAtom = backwardChainRecursive(initiatesLinkId, bind, depth - 1, visitedInPath);
         // if (initiatesLinkAtom instanceof Link) {
         //     Link inferredHoldsAt = applyPersistenceRule((Link) initiatesLinkAtom, timeT2);
         //     if (inferredHoldsAt != null) {
-        //         // Check unification and add to evidence...
+        //         // Check unify and add to evidence...
         //     }
         // }
         // System.out.println("  ".repeat(MAX_BACKWARD_CHAIN_DEPTH - depth + 1) + "-> Temporal rule check (persistence) not fully implemented.");
 
     }
 
-    private void findSupportViaQuantifiers(String targetId, Map<String, String> bindings, int depth, Set<String> visitedInPath, List<Atom> supportingEvidence) {
+    private void findSupportViaQuantifiers(String targetId, Map<String, String> bind, int depth, Set<String> visitedInPath, List<Atom> supportingEvidence) {
         // Example: Target is Predicate(ConstantA)
         // Search for ForAll(X, Predicate(X))
         Set<String> forAllLinks = linksByType.getOrDefault(LinkType.FOR_ALL, Collections.emptySet());
@@ -843,15 +843,15 @@ import java.util.stream.IntStream;
             String quantifiedExprId = forAllLink.targets.get(1); // e.g., Predicate($X)
 
             // Try to unify the quantified expression with the target
-            Map<String, String> tempBindings = new HashMap<>(bindings);
+            Map<String, String> tempBindings = new HashMap<>(bind);
             if (canUnify(quantifiedExprId, targetId, tempBindings)) {
-                // If unification succeeds, it means the target is an instance of the universally quantified statement.
+                // If unify succeeds, it means the target is an instance of the universally quantified statement.
                 // The evidence strength/count comes from the ForAll link itself.
                 // System.out.println("  ".repeat(MAX_BACKWARD_CHAIN_DEPTH - depth + 1) + "-> Supported by ForAll: " + forAllId);
                 // Create a temporary atom representing the instantiated evidence
                 Atom instantiatedEvidence = Atom.createShell(targetId, forAllLink.tv);
                 supportingEvidence.add(instantiatedEvidence);
-                bindings.putAll(tempBindings); // Update bindings
+                bind.putAll(tempBindings); // Update bind
                 // No recursive call needed here, as the ForAll link is the direct support.
             }
         }
@@ -890,16 +890,16 @@ import java.util.stream.IntStream;
         }
     }
 
-    private List<PlanStep> findPlanRecursive(String goalId, String currentStateId, Map<String, String> bindings, int depth, Set<String> visitedGoals) {
+    private List<PlanStep> findPlanRecursive(String goalId, String currentStateId, Map<String, String> bind, int depth, Set<String> visitedGoals) {
         // System.out.println("  ".repeat(MAX_BACKWARD_CHAIN_DEPTH - depth) + "Plan Seek: " + goalId + " (Depth " + depth + ")");
 
         if (depth <= 0) return null; // Depth limit reached
 
-        // Check if current state already satisfies the goal (with unification)
-        Map<String, String> currentBindings = new HashMap<>(bindings);
+        // Check if current state already satisfies the goal (with unify)
+        Map<String, String> currentBindings = new HashMap<>(bind);
         if (canUnify(currentStateId, goalId, currentBindings)) {
             // System.out.println("  ".repeat(MAX_BACKWARD_CHAIN_DEPTH - depth + 1) + "-> Goal matches current state.");
-            bindings.putAll(currentBindings); // Update bindings
+            bind.putAll(currentBindings); // Update bind
             return new ArrayList<>(); // Empty plan signifies goal already met
         }
 
@@ -925,7 +925,7 @@ import java.util.stream.IntStream;
             if (producerLink.type != LinkType.PREDICTIVE_IMPLICATION || producerLink.targets.size() != 2) continue;
 
             // Check if the link's target *really* unifies with the goalId (might have variables)
-            Map<String, String> ruleBindings = new HashMap<>(bindings);
+            Map<String, String> ruleBindings = new HashMap<>(bind);
             if (!canUnify(producerLink.targets.get(1), goalId, ruleBindings)) {
                 continue; // This rule doesn't actually produce the specific goal needed
             }
@@ -978,7 +978,7 @@ import java.util.stream.IntStream;
                 if (bestPlan == null || currentPlanConfidence > bestPlanConfidence) {
                     bestPlan = currentPlan;
                     bestPlanConfidence = currentPlanConfidence;
-                    bindings.putAll(ruleBindings); // Update bindings with the best path found so far
+                    bind.putAll(ruleBindings); // Update bind with the best path found so far
                 }
             }
         }

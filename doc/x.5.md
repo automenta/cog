@@ -1076,9 +1076,9 @@ pln.demonstrateForgetting();
 
     // --- Higher-Order Logic Primitives (Basic) ---
 
-     /** Basic unification support (Placeholder - requires significant implementation). */
-     private boolean unify(Atom pattern, Atom instance, Map<VariableNode, String> bindings) {
-         // TODO: Implement unification logic comparing pattern (potentially with variables) and instance.
+     /** Basic unify support (Placeholder - requires significant implementation). */
+     private boolean unify(Atom pattern, Atom instance, Map<VariableNode, String> bind) {
+         // TODO: Implement unify logic comparing pattern (potentially with variables) and instance.
          // Needs to handle Node-Node, Variable-Node, Link-Link recursively.
          System.err.println("Warning: Unification not implemented.");
          return pattern.id.equals(instance.id); // Fallback to exact match if no variables

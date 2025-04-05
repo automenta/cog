@@ -270,7 +270,7 @@ public final class Cog {
         System.out.println("\n--- Cognitive Logic Engine Demonstration Finished ---");
     }
 
-    private static double unitize(double initialSTI) {
+    public static double unitize(double initialSTI) {
         return Math.max(0.0, Math.min(1.0, initialSTI));
     }
 

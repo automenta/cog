@@ -22,7 +22,7 @@ import java.util.stream.Stream;
 * 4.  **Temporal Logic (Event Calculus):** Incorporates `INITIATES`, `TERMINATES`, `HOLDS_AT`,
 *     `PREDICTIVE_IMPLICATION`, `SEQUENCE`, etc., based on the provided text, enabling richer temporal reasoning.
 *     Includes `TimeSpec` for representing time points and intervals.
-* 5.  **Higher-Order Logic (HOL):** Supports `VariableNode`, `ForAllLink`, `ExistsLink`, and unification
+* 5.  **Higher-Order Logic (HOL):** Supports `VariableNode`, `ForAllLink`, `ExistsLink`, and unify
 *     within inference rules for more expressive knowledge representation and reasoning.
 * 6.  **Scalability:** Implements basic indexing (by type, target) for faster premise lookup.
 *     Forward chaining uses importance heuristics for selecting inferences. Backward chaining prioritizes relevant subgoals.
@@ -104,11 +104,11 @@ inferenceEngine.forwardChain(maxSteps);
 
 /**
     * Performs backward chaining to query the truth value of a target Atom pattern.
-    * Supports variables and unification.
+    * Supports variables and unify.
     *
     * @param queryAtom The Atom pattern to query (can contain variables).
     * @param maxDepth Maximum recursion depth.
-    * @return A list of bindings (variable assignments) and the corresponding inferred Atom for each successful proof path.
+    * @return A list of bind (variable assignments) and the corresponding inferred Atom for each successful proof path.
       */
       public List<QueryResult> query(Atom queryAtom, int maxDepth) {
       return inferenceEngine.backwardChain(queryAtom, maxDepth);
@@ -465,9 +465,9 @@ private final KnowledgeBase kb;
          return Optional.empty();
      }
 
-     /** Implements basic unification for variables. */
-     public Optional<Map<String, String>> unify(Atom pattern, Atom fact, Map<String, String> initialBindings) {
-         Map<String, String> bindings = new HashMap<>(initialBindings);
+     /** Implements basic unify for variables. */
+     public Optional<Map<String, String>> unify(Atom pattern, Atom fact, Map<String, String> initialBind) {
+         Map<String, String> bind = new HashMap<>(initialBind);
          LinkedList<Atom[]> queue = new LinkedList<>();
          queue.add(new Atom[]{pattern, fact});
 
@@ -476,20 +476,20 @@ private final KnowledgeBase kb;
              Atom p = pair[0];
              Atom f = pair[1];
 
-             // Resolve variables in pattern using current bindings
-             while (p instanceof VariableNode && bindings.containsKey(p.id)) {
-                 String boundId = bindings.get(p.id);
+             // Resolve variables in pattern using current bind
+             while (p instanceof VariableNode && bind.containsKey(p.id)) {
+                 String boundId = bind.get(p.id);
                  Optional<Atom> boundAtom = kb.getAtom(boundId);
                  if (!boundAtom.isPresent()) return Optional.empty(); // Bound variable refers to non-existent atom
                  p = boundAtom.get();
              }
 
-             // Standard unification cases
+             // Standard unify cases
              if (p instanceof VariableNode) {
                  if (!p.id.equals(f.id)) { // Avoid binding variable to itself trivially
                      // OCCURS CHECK (simplified: check if variable is in fact's structure - needed for full HOL)
                      // if (containsVariable(f, (VariableNode)p)) return Optional.empty();
-                     bindings.put(p.id, f.id);
+                     bind.put(p.id, f.id);
                  }
              } else if (p.getClass() != f.getClass()) {
                  return Optional.empty(); // Different types cannot unify
@@ -509,16 +509,16 @@ private final KnowledgeBase kb;
                       queue.add(new Atom[]{pTargetOpt.get(), fTargetOpt.get()});
                  }
              }
-              // Ignore TruthValue and Importance during unification
+              // Ignore TruthValue and Importance during unify
          }
-         return Optional.of(bindings);
+         return Optional.of(bind);
      }
 
 
-     /** Applies bindings to substitute variables in an Atom pattern. */
-     public Optional<Atom> substitute(Atom pattern, Map<String, String> bindings) {
-         if (pattern instanceof VariableNode && bindings.containsKey(pattern.id)) {
-             return kb.getAtom(bindings.get(pattern.id));
+     /** Applies bind to substitute variables in an Atom pattern. */
+     public Optional<Atom> substitute(Atom pattern, Map<String, String> bind) {
+         if (pattern instanceof VariableNode && bind.containsKey(pattern.id)) {
+             return kb.getAtom(bind.get(pattern.id));
          } else if (pattern instanceof Link) {
              Link link = (Link) pattern;
              List<String> newTargetIds = new ArrayList<>();
@@ -526,7 +526,7 @@ private final KnowledgeBase kb;
                  Optional<Atom> targetAtomOpt = kb.getAtom(targetId);
                  if (!targetAtomOpt.isPresent()) return Optional.empty(); // Target missing
 
-                 Optional<Atom> substitutedTargetOpt = substitute(targetAtomOpt.get(), bindings);
+                 Optional<Atom> substitutedTargetOpt = substitute(targetAtomOpt.get(), bind);
                  if (!substitutedTargetOpt.isPresent()) return Optional.empty(); // Substitution failed for target
                  newTargetIds.add(substitutedTargetOpt.get().id);
              }
@@ -632,14 +632,14 @@ private final KnowledgeBase kb;
      }
 
 
-     /** Performs backward chaining to find bindings for a query Atom. */
+     /** Performs backward chaining to find bind for a query Atom. */
      public List<QueryResult> backwardChain(Atom queryAtom, int maxDepth) {
          return backwardChainRecursive(queryAtom, maxDepth, new HashMap<>(), new HashSet<>());
      }
 
-     private List<QueryResult> backwardChainRecursive(Atom queryAtom, int depth, Map<String, String> bindings, Set<String> visited) {
-         String queryId = queryAtom.id + bindings.toString(); // Unique ID for this query state
-          // System.out.println("  ".repeat(maxDepth - depth) + "BC: Seeking " + queryAtom.id + " Bindings: " + bindings + " (Depth " + depth + ")");
+     private List<QueryResult> backwardChainRecursive(Atom queryAtom, int depth, Map<String, String> bind, Set<String> visited) {
+         String queryId = queryAtom.id + bind.toString(); // Unique ID for this query state
+          // System.out.println("  ".repeat(maxDepth - depth) + "BC: Seeking " + queryAtom.id + " Bindings: " + bind + " (Depth " + depth + ")");
 
 
          if (depth <= 0) {
@@ -655,13 +655,13 @@ private final KnowledgeBase kb;
          List<QueryResult> results = new ArrayList<>();
 
          // 1. Direct Match: Check if a matching atom exists in KB after substitution
-         Optional<Atom> substitutedQueryOpt = substitute(queryAtom, bindings);
+         Optional<Atom> substitutedQueryOpt = substitute(queryAtom, bind);
          if (substitutedQueryOpt.isPresent()) {
              Atom substitutedQuery = substitutedQueryOpt.get();
              Optional<Atom> directMatch = kb.getAtom(substitutedQuery.id);
              if (directMatch.isPresent() && directMatch.get().tv.getConfidence() > MIN_CONFIDENCE_THRESHOLD) {
                   // System.out.println("  ".repeat(maxDepth - depth + 1) + "-> Found direct match: " + directMatch.get().id + " " + directMatch.get().tv);
-                 results.add(new QueryResult(bindings, directMatch.get()));
+                 results.add(new QueryResult(bind, directMatch.get()));
              }
          } else {
               // System.out.println("  ".repeat(maxDepth - depth + 1) + "-> Substitution failed for query.");
@@ -686,16 +686,16 @@ private final KnowledgeBase kb;
                      Link premiseBC_pattern = new Link(Link.LinkType.INHERITANCE, Arrays.asList(potentialB_id, targetC_id), TruthValue.UNKNOWN, null);
 
                      // Recursively seek premise A->B
-                     List<QueryResult> resultsAB = backwardChainRecursive(premiseAB_pattern, depth - 1, bindings, visited);
+                     List<QueryResult> resultsAB = backwardChainRecursive(premiseAB_pattern, depth - 1, bind, visited);
                      for (QueryResult resAB : resultsAB) {
-                         // Recursively seek premise B->C with updated bindings from A->B result
-                         List<QueryResult> resultsBC = backwardChainRecursive(premiseBC_pattern, depth - 1, resAB.bindings, visited);
+                         // Recursively seek premise B->C with updated bind from A->B result
+                         List<QueryResult> resultsBC = backwardChainRecursive(premiseBC_pattern, depth - 1, resAB.bind, visited);
                          for (QueryResult resBC : resultsBC) {
                              // Found both premises A->B and B->C
                              Optional<Link> inferredAC = deduction((Link) resAB.inferredAtom, (Link) resBC.inferredAtom);
                              if (inferredAC.isPresent() && inferredAC.get().tv.getConfidence() > MIN_CONFIDENCE_THRESHOLD) {
                                   // System.out.println("  ".repeat(maxDepth - depth + 1) + "-> Derived via Deduction (B=" + potentialB_id + "): " + inferredAC.get().id + " " + inferredAC.get().tv);
-                                 results.add(new QueryResult(resBC.bindings, inferredAC.get()));
+                                 results.add(new QueryResult(resBC.bind, inferredAC.get()));
                              }
                          }
                      }
@@ -713,12 +713,12 @@ private final KnowledgeBase kb;
               Link premiseAB_pattern = new Link(Link.LinkType.INHERITANCE, Arrays.asList(targetA_id, targetB_id), TruthValue.UNKNOWN, null);
 
               // Recursively seek premise A->B
-              List<QueryResult> resultsAB = backwardChainRecursive(premiseAB_pattern, depth - 1, bindings, visited);
+              List<QueryResult> resultsAB = backwardChainRecursive(premiseAB_pattern, depth - 1, bind, visited);
               for (QueryResult resAB : resultsAB) {
                   Optional<Link> inferredBA = inversion((Link) resAB.inferredAtom);
                   if (inferredBA.isPresent() && inferredBA.get().tv.getConfidence() > MIN_CONFIDENCE_THRESHOLD) {
                        // System.out.println("  ".repeat(maxDepth - depth + 1) + "-> Derived via Inversion: " + inferredBA.get().id + " " + inferredBA.get().tv);
-                      results.add(new QueryResult(resAB.bindings, inferredBA.get()));
+                      results.add(new QueryResult(resAB.bind, inferredBA.get()));
                   }
               }
           }
@@ -731,9 +731,9 @@ private final KnowledgeBase kb;
              if (forAllLink.targets.size() >= 2) { // Expecting [VariableList, Body]
                  Atom bodyPattern = kb.getAtom(forAllLink.targets.get(forAllLink.targets.size() - 1)).orElse(null);
                  if (bodyPattern != null) {
-                     Optional<Map<String, String>> unificationResult = unify(bodyPattern, queryAtom, bindings);
+                     Optional<Map<String, String>> unificationResult = unify(bodyPattern, queryAtom, bind);
                      unificationResult.ifPresent(finalBindings -> {
-                         // If unification succeeds, the ForAll statement supports the query
+                         // If unify succeeds, the ForAll statement supports the query
                          // The inferred atom is the query atom itself, but supported by the ForAll rule
                          // We need to adjust the TV based on the ForAll link's TV
                          TruthValue inferredTV = queryAtom.tv.merge(forAllLink.tv); // Simplistic merge
@@ -1526,18 +1526,18 @@ private final KnowledgeBase kb;
 
      /** Represents a query result from backward chaining. */
      public static class QueryResult {
-         public final Map<String, String> bindings;
+         public final Map<String, String> bind;
          public final Atom inferredAtom; // The specific atom instance supporting the query
 
-         public QueryResult(Map<String, String> bindings, Atom inferredAtom) {
-             this.bindings = Collections.unmodifiableMap(new HashMap<>(bindings));
+         public QueryResult(Map<String, String> bind, Atom inferredAtom) {
+             this.bind = Collections.unmodifiableMap(new HashMap<>(bind));
              this.inferredAtom = inferredAtom;
          }
 
          @Override
          public String toString() {
              return "QueryResult{" +
-                    "bindings=" + bindings +
+                    "bind=" + bind +
                     ", inferredAtom=" + inferredAtom +
                     '}';
          }

@@ -25,7 +25,7 @@ import java.util.stream.Stream;
 * - Perception/Action API: Generic `PerceptionMapper` and `ActionExecutor` interfaces allow fluent integration with arbitrary external systems/environments.
 * - Planning: Basic goal-directed backward-chaining planner (`planAction`) searches for action sequences.
 * - Temporal Logic: Incorporates Event Calculus concepts (`Initiate`, `Terminate`, `HoldsAt`, `HoldsThroughout`, `PredictiveImplication`, `Sequence`) via dedicated LinkTypes and inference rules. Time is represented via TimeNodes.
-* - Higher-Order Logic: Supports `VariableNode` and basic `ForAllLink` / `ExistsLink` for quantification and schema representation (unification support is foundational).
+* - Higher-Order Logic: Supports `VariableNode` and basic `ForAllLink` / `ExistsLink` for quantification and schema representation (unify support is foundational).
 * - Scalability: Uses indexing (`linksByType`, `linksByTarget`) for faster lookups than exhaustive searches. Inference uses heuristics (e.g., attention value).
 *
 * Based on concepts from standard PLN literature and the provided "Temporal and Causal Inference" text.
@@ -899,7 +899,7 @@ import java.util.stream.Stream;
     }
 
 
-    // TODO: Implement Inversion, Temporal rules, HOL rules (unification, instantiation)
+    // TODO: Implement Inversion, Temporal rules, HOL rules (unify, instantiation)
 
 
     /** Performs periodic housekeeping: forgetting, AV decay. */

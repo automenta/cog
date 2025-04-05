@@ -695,8 +695,8 @@ public class AdvancedPLN {
             return backwardChainRecursive(queryAtom, maxDepth, new HashMap<>(), new HashSet<>());
         }
 
-        private List<InferenceResult> backwardChainRecursive(Atom queryAtom, int depth, Map<String, String> bindings, Set<String> visited) {
-            String queryId = queryAtom.id + bindings.toString(); // State identifier
+        private List<InferenceResult> backwardChainRecursive(Atom queryAtom, int depth, Map<String, String> bind, Set<String> visited) {
+            String queryId = queryAtom.id + bind.toString(); // State identifier
 
             if (depth <= 0 || visited.contains(queryId)) {
                 return Collections.emptyList();
@@ -706,27 +706,27 @@ public class AdvancedPLN {
             List<InferenceResult> results = new ArrayList<>();
 
             // 1. Direct Match (after substitution)
-            substitute(queryAtom, bindings).ifPresent(substitutedQuery -> {
+            substitute(queryAtom, bind).ifPresent(substitutedQuery -> {
                 kb.getAtom(substitutedQuery.id).ifPresent(directMatch -> {
                     if (directMatch.tv.getConfidence() > MIN_CONFIDENCE_THRESHOLD) {
                         // System.out.println("  ".repeat(DEFAULT_MAX_BC_DEPTH - depth) + "-> BC Direct Match: " + directMatch);
-                        results.add(new InferenceResult(bindings, directMatch));
+                        results.add(new InferenceResult(bind, directMatch));
                     }
                 });
             });
 
             // 2. Inference Rules Backward
             // Try Deduction Backward
-             tryDeductionBackward(queryAtom, depth, bindings, visited, results);
+             tryDeductionBackward(queryAtom, depth, bind, visited, results);
 
             // Try Inversion Backward
-             tryInversionBackward(queryAtom, depth, bindings, visited, results);
+             tryInversionBackward(queryAtom, depth, bind, visited, results);
 
             // Try Modus Ponens Backward (Target B, seek A and A->B)
-             tryModusPonensBackward(queryAtom, depth, bindings, visited, results);
+             tryModusPonensBackward(queryAtom, depth, bind, visited, results);
 
             // Try HOL Instantiation Backward (Target P(c), seek ForAll($X, P($X)))
-             tryInstantiationBackward(queryAtom, depth, bindings, visited, results);
+             tryInstantiationBackward(queryAtom, depth, bind, visited, results);
 
              // Try Temporal Rules Backward...
 
@@ -736,7 +736,7 @@ public class AdvancedPLN {
         }
 
         // --- Backward Rule Helpers ---
-        private void tryDeductionBackward(Atom targetAC, int depth, Map<String, String> bindings, Set<String> visited, List<InferenceResult> results) {
+        private void tryDeductionBackward(Atom targetAC, int depth, Map<String, String> bind, Set<String> visited, List<InferenceResult> results) {
             if (!(targetAC instanceof Link) || !isValidImplication(targetAC) || targetAC.targets.size() != 2) return;
             String targetA_id = targetAC.targets.get(0); String targetC_id = targetAC.targets.get(1);
 
@@ -746,14 +746,14 @@ public class AdvancedPLN {
                 Link premiseAB_pattern = new Link(((Link) targetAC).type, Arrays.asList(targetA_id, potentialB_id), TruthValue.UNKNOWN, null);
                 Link premiseBC_pattern = new Link(((Link) targetAC).type, Arrays.asList(potentialB_id, targetC_id), TruthValue.UNKNOWN, null);
 
-                List<InferenceResult> resultsAB = backwardChainRecursive(premiseAB_pattern, depth - 1, bindings, visited);
+                List<InferenceResult> resultsAB = backwardChainRecursive(premiseAB_pattern, depth - 1, bind, visited);
                 for (InferenceResult resAB : resultsAB) {
-                    List<InferenceResult> resultsBC = backwardChainRecursive(premiseBC_pattern, depth - 1, resAB.bindings, visited);
+                    List<InferenceResult> resultsBC = backwardChainRecursive(premiseBC_pattern, depth - 1, resAB.bind, visited);
                     for (InferenceResult resBC : resultsBC) {
                         deduction((Link) resAB.inferredAtom, (Link) resBC.inferredAtom).ifPresent(inferredAC -> {
                              if (inferredAC.tv.getConfidence() > MIN_CONFIDENCE_THRESHOLD) {
                                   // Check if inferred matches original target (potentially after binding)
-                                  unify(targetAC, inferredAC, resBC.bindings).ifPresent(finalBindings ->
+                                  unify(targetAC, inferredAC, resBC.bind).ifPresent(finalBindings ->
                                       results.add(new InferenceResult(finalBindings, inferredAC)));
                              }
                         });
@@ -762,23 +762,23 @@ public class AdvancedPLN {
             });
         }
 
-         private void tryInversionBackward(Atom targetBA, int depth, Map<String, String> bindings, Set<String> visited, List<InferenceResult> results) {
+         private void tryInversionBackward(Atom targetBA, int depth, Map<String, String> bind, Set<String> visited, List<InferenceResult> results) {
              if (!(targetBA instanceof Link) || !isValidImplication(targetBA) || targetBA.targets.size() != 2) return;
              String targetB_id = targetBA.targets.get(0); String targetA_id = targetBA.targets.get(1);
              Link premiseAB_pattern = new Link(((Link) targetBA).type, Arrays.asList(targetA_id, targetB_id), TruthValue.UNKNOWN, null);
 
-             List<InferenceResult> resultsAB = backwardChainRecursive(premiseAB_pattern, depth - 1, bindings, visited);
+             List<InferenceResult> resultsAB = backwardChainRecursive(premiseAB_pattern, depth - 1, bind, visited);
              for (InferenceResult resAB : resultsAB) {
                  inversion((Link) resAB.inferredAtom).ifPresent(inferredBA -> {
                       if (inferredBA.tv.getConfidence() > MIN_CONFIDENCE_THRESHOLD) {
-                          unify(targetBA, inferredBA, resAB.bindings).ifPresent(finalBindings ->
+                          unify(targetBA, inferredBA, resAB.bind).ifPresent(finalBindings ->
                              results.add(new InferenceResult(finalBindings, inferredBA)));
                       }
                  });
              }
          }
 
-          private void tryModusPonensBackward(Atom targetB, int depth, Map<String, String> bindings, Set<String> visited, List<InferenceResult> results) {
+          private void tryModusPonensBackward(Atom targetB, int depth, Map<String, String> bind, Set<String> visited, List<InferenceResult> results) {
               // Find potential implication links X -> B
               kb.getLinksByTarget(targetB.id)
                 .filter(this::isValidImplication)
@@ -786,12 +786,12 @@ public class AdvancedPLN {
                 .forEach(linkAB -> {
                     String premiseA_id = linkAB.targets.get(0);
                     kb.getAtom(premiseA_id).ifPresent(premiseA_pattern -> { // Use the atom structure as pattern
-                        List<InferenceResult> resultsA = backwardChainRecursive(premiseA_pattern, depth - 1, bindings, visited);
+                        List<InferenceResult> resultsA = backwardChainRecursive(premiseA_pattern, depth - 1, bind, visited);
                         for (InferenceResult resA : resultsA) {
                              // We found A, and we have link A->B (linkAB), so apply MP forward to confirm B
                              modusPonens(resA.inferredAtom, linkAB).ifPresent(inferredB -> {
                                   if (inferredB.tv.getConfidence() > MIN_CONFIDENCE_THRESHOLD) {
-                                      unify(targetB, inferredB, resA.bindings).ifPresent(finalBindings ->
+                                      unify(targetB, inferredB, resA.bind).ifPresent(finalBindings ->
                                          results.add(new InferenceResult(finalBindings, inferredB)));
                                   }
                              });
@@ -800,14 +800,14 @@ public class AdvancedPLN {
                 });
           }
 
-          private void tryInstantiationBackward(Atom targetInstance, int depth, Map<String, String> bindings, Set<String> visited, List<InferenceResult> results) {
+          private void tryInstantiationBackward(Atom targetInstance, int depth, Map<String, String> bind, Set<String> visited, List<InferenceResult> results) {
               // Find ForAll links whose body *might* unify with the target
               kb.getLinksByType(Link.LinkType.FOR_ALL)
                 .filter(faLink -> faLink.targets.size() >= 2)
                 .forEach(faLink -> {
                     kb.getAtom(faLink.targets.get(faLink.targets.size() - 1)).ifPresent(bodyPattern -> {
-                         unify(bodyPattern, targetInstance, bindings).ifPresent(finalBindings -> {
-                              // If unification successful, the ForAll link provides evidence
+                         unify(bodyPattern, targetInstance, bind).ifPresent(finalBindings -> {
+                              // If unify successful, the ForAll link provides evidence
                               // The evidence TV should come from the ForAll link
                                System.out.println("  ".repeat(DEFAULT_MAX_BC_DEPTH - depth) + "-> BC Instantiation Match: " + faLink);
                               TruthValue evidenceTV = targetInstance.tv.merge(faLink.tv); // Simple merge
@@ -1321,9 +1321,9 @@ public class AdvancedPLN {
 
     // --- Query Result ---
     /** Represents a result from backward chaining. Immutable. */
-    public static final record InferenceResult(Map<String, String> bindings, Atom inferredAtom) {
-        public InferenceResult(Map<String, String> bindings, Atom inferredAtom) {
-            this.bindings = Collections.unmodifiableMap(new HashMap<>(bindings));
+    public static final record InferenceResult(Map<String, String> bind, Atom inferredAtom) {
+        public InferenceResult(Map<String, String> bind, Atom inferredAtom) {
+            this.bind = Collections.unmodifiableMap(new HashMap<>(bind));
             this.inferredAtom = inferredAtom;
         }
     }
@@ -1414,7 +1414,7 @@ public class AdvancedPLN {
     *   Includes basic `applyPersistence` for temporal reasoning.
     *   Includes `unify` and `substitute` methods (like F) providing a foundation for HOL rule implementation.
     *   `forwardChain` uses a `PriorityQueue` (like F) based on a `PotentialInference` record (incorporating premise importance) for efficient, heuristic-driven inference.
-    *   `backwardChain` is structured for querying (`InferenceResult` record like F) and supports bindings. Includes helper methods for trying different rule types backward.
+    *   `backwardChain` is structured for querying (`InferenceResult` record like F) and supports bind. Includes helper methods for trying different rule types backward.
 5.  **Planning (F, E):**
     *   `planToActionSequence` resides in `InferenceEngine`.
     *   Uses a recursive backward-chaining approach similar to F/E.

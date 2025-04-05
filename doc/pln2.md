@@ -325,7 +325,7 @@ public class SimpleCorePLN {
      * Performs simple backward chaining to find evidence for a target Atom.
      * Very basic implementation: looks for direct rules (deduction/inversion)
      * that could produce the target and recursively checks premises.
-     * Does not handle complex variable unification or sophisticated pruning.
+     * Does not handle complex variable unify or sophisticated pruning.
      *
      * @param targetId The ID of the target Atom.
      * @param maxDepth Maximum recursion depth.

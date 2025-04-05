@@ -28,7 +28,7 @@ import java.util.stream.Stream;
 * - **Perception/Action:** Includes a flexible `Environment` interface and agent loop structure.
 * - **Planning:** `selectAction` uses a slightly more goal-oriented heuristic, acknowledging need for deeper planning.
 * - **Temporal Logic:** Incorporates `LinkType`s (SEQUENCE, PREDICTIVE_IMPLICATION) and Event Calculus concepts (referenced). `learnFromExperience` uses temporal links.
-* - **Higher-Order Logic:** Includes `VariableNode`, `FOR_ALL`, `EXISTS` link types and placeholder for unification, enabling richer representation.
+* - **Higher-Order Logic:** Includes `VariableNode`, `FOR_ALL`, `EXISTS` link types and placeholder for unify, enabling richer representation.
 * - **Scalability:** Uses ConcurrentHashMap; acknowledges limitations of current search and mentions indexing/heuristics. Pruning helps manage size.
 *
 * @version 1.0
@@ -706,13 +706,13 @@ import java.util.stream.Stream;
        * @param instanceAtoms Map of VariableNode ID to concrete Atom ID/Value for binding.
        * @return A new Atom representing the instantiated pattern, or null on failure.
        */
-       public Atom unificationAndInstantiation(Atom patternAtom, Map<String, String> bindings) {
+       public Atom unificationAndInstantiation(Atom patternAtom, Map<String, String> bind) {
            // Basic placeholder - requires recursive traversal and substitution
            System.out.println("Unification/Instantiation rule needs full implementation.");
             if (patternAtom instanceof Node && ((Node) patternAtom).name.startsWith(VARIABLE_PREFIX)) {
                  String varName = ((Node) patternAtom).name;
-                 if (bindings.containsKey(varName)) {
-                     return getAtom(bindings.get(varName)); // Return the bound atom
+                 if (bind.containsKey(varName)) {
+                     return getAtom(bind.get(varName)); // Return the bound atom
                  } else {
                      return patternAtom; // Unbound variable remains
                  }
@@ -724,8 +724,8 @@ import java.util.stream.Stream;
                      Atom targetAtom = getAtom(targetId); // Need to handle target structure recursively
                       if (targetAtom instanceof Node && ((Node) targetAtom).name.startsWith(VARIABLE_PREFIX)) {
                           String varName = ((Node) targetAtom).name;
-                          if (bindings.containsKey(varName)) {
-                             instantiatedTargets.add(bindings.get(varName));
+                          if (bind.containsKey(varName)) {
+                             instantiatedTargets.add(bind.get(varName));
                               changed = true;
                           } else {
                               instantiatedTargets.add(targetId); // Keep variable
