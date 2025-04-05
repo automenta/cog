@@ -120,7 +120,6 @@ public final class Cog {
         this.interp = new Interp(this);
         this.agent = new Agent(this); // Agent primarily uses MeTTa eval, see Agent.run()
         this.parser = new MettaParser(this);
-        this.jvmBridge = new JvmBridge(this); // Initialize the JVM bridge
         this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             var t = new Thread(r, "Cog-Maintenance");
             t.setDaemon(true); // Allow JVM exit even if this thread is running
@@ -129,7 +128,9 @@ public final class Cog {
         // Schedule periodic memory maintenance (decay, forgetting)
         scheduler.scheduleAtFixedRate(this::performMaintenance, FORGETTING_CHECK_INTERVAL_MS, FORGETTING_CHECK_INTERVAL_MS, TimeUnit.MILLISECONDS);
 
-        new Core(this, jvmBridge).initialize(); // Initializes symbols, Is functions, core rules, injects JvmBridge
+        new Core(this); // Initializes symbols, Is functions, core rules, injects JvmBridge
+        this.jvmBridge = new JvmBridge(this); // Initialize the JVM bridge
+
 
         System.out.println("Cog (v6.0 JVM Reflection) Initialized. Init Size: " + mem.size());
     }
@@ -930,15 +931,9 @@ public final class Cog {
     /** Initializes core symbols, Is functions, and loads initial bootstrap MeTTa rules. */
     private static class Core {
         private final Cog cog;
-        private final JvmBridge jvmBridge; // Use the dedicated JVM bridge
 
-        Core(Cog cog, JvmBridge jvmBridge) {
+        Core(Cog cog) {
             this.cog = cog;
-            this.jvmBridge = jvmBridge;
-        }
-
-        /** Initializes core components. */
-        void initialize() {
             // Assign canonical symbols (retrieved or created via S)
             Cog.SYMBOL_EQ = cog.S("="); Cog.SYMBOL_COLON = cog.S(":"); Cog.SYMBOL_ARROW = cog.S("->"); Cog.SYMBOL_TYPE = cog.S("Type");
             Cog.SYMBOL_TRUE = cog.S("True"); Cog.SYMBOL_FALSE = cog.S("False"); Cog.SYMBOL_SELF = cog.S("Self"); Cog.SYMBOL_NIL = cog.S("Nil");
@@ -950,11 +945,11 @@ public final class Cog {
             // Ensure core symbols/types have high confidence/pri
             Stream.of(SYMBOL_EQ, SYMBOL_COLON, SYMBOL_ARROW, SYMBOL_TYPE, SYMBOL_TRUE, SYMBOL_FALSE, SYMBOL_NIL, SYMBOL_SELF,
                             cog.S("Number"), cog.S("Bool"), cog.S("String"), cog.S("Atom"), cog.S("List"), cog.S("Act"),
-                            cog.S("GroundedFn"), cog.S("JavaObject")) // Add type for Java objects
+                            cog.S("Fn"), cog.S("JavaObject")) // Add type for Java objects
                     .forEach(sym -> { cog.mem.updateTruth(sym, Truth.TRUE); cog.mem.boost(sym, 1.0); });
         }
 
-        /** Defines the grounded `Is` functions that bridge MeTTa to Java code. */
+        /** Defines the `Is` Fn that bridge MeTTa to Java code. */
         private void initIsFn() {
             // --- Core Ops ---
             // (match space pattern template) -> Is<List<Result>>
@@ -1041,14 +1036,6 @@ public final class Cog {
                         return cog.E(cog.S("Act"), cog.IS(actResult.newPercepts()), cog.IS(actResult.reward()));
                     })
             ));
-
-            // --- JVM Integration (Delegated to JvmBridge) ---
-            // # MeTTa Integration Pathway: JVM Interaction (Implemented)
-            cog.IS("JavaNew", jvmBridge::javaNew);
-            cog.IS("JavaCall", jvmBridge::javaCall);
-            cog.IS("JavaStaticCall", jvmBridge::javaStaticCall);
-            cog.IS("JavaField", jvmBridge::javaField);
-            cog.IS("JavaProxy", jvmBridge::javaProxy);
         }
 
         // --- Helpers for Is Functions (Kept in Java for performance) ---
@@ -1096,18 +1083,18 @@ public final class Cog {
             ; Basic Types Declaration (Self-description)
             (: = Type) (: : Type) (: -> Type) (: Type Type)
             (: True Type) (: False Type) (: Nil Type) (: Number Type) (: String Type)
-            (: Bool Type) (: Atom Type) (: List Type) (: JavaObject Type) (: GroundedFn Type)
+            (: Bool Type) (: Atom Type) (: List Type) (: JavaObject Type) (: Fn Type)
             (: State Type) (: Action Type) (: Goal Type) (: Utility Type) (: Implies Type) (: Seq Type) (: Act Type)
 
             ; Type Assertions for constants
             (: True Bool) (: False Bool) (: Nil List)
             ; Type assertions for core Is functions
-            (: match GroundedFn) (: eval GroundedFn) (: add-atom GroundedFn) (: remove-atom GroundedFn)
-            (: get-value GroundedFn) (: &self GroundedFn) (: _+ GroundedFn) (: _- GroundedFn) (: _* GroundedFn)
-            (: _/ GroundedFn) (: _== GroundedFn) (: _> GroundedFn) (: _< GroundedFn) (: Concat GroundedFn)
-            (: If GroundedFn) (: Let GroundedFn) (: IsEmpty GroundedFn) (: IsNil GroundedFn) (: RandomFloat GroundedFn)
-            (: GetEnv GroundedFn) (: AgentPerceive GroundedFn) (: AgentAvailableActions GroundedFn) (: AgentExecute GroundedFn)
-            (: JavaNew GroundedFn) (: JavaCall GroundedFn) (: JavaStaticCall GroundedFn) (: JavaField GroundedFn) (: JavaProxy GroundedFn)
+            (: match Fn) (: eval Fn) (: add-atom Fn) (: remove-atom Fn)
+            (: get-value Fn) (: &self Fn) (: _+ Fn) (: _- Fn) (: _* Fn)
+            (: _/ Fn) (: _== Fn) (: _> Fn) (: _< Fn) (: Concat Fn)
+            (: If Fn) (: Let Fn) (: IsEmpty Fn) (: IsNil Fn) (: RandomFloat Fn)
+            (: GetEnv Fn) (: AgentPerceive Fn) (: AgentAvailableActions Fn) (: AgentExecute Fn)
+            (: JavaNew Fn) (: JavaCall Fn) (: JavaStaticCall Fn) (: JavaField Fn) (: JavaProxy Fn)
 
             ; Peano Arithmetic Example Rules (Illustrative)
             (= (add Z $n) $n)
@@ -1247,7 +1234,7 @@ public final class Cog {
         private static final Set<String> ALLOWED_CLASSES = Set.of(
             "java.lang.String", "java.lang.Math", "java.util.ArrayList", "java.util.HashMap",
             "java.lang.Double", "java.lang.Integer", "java.lang.Boolean", "java.lang.Object",
-            "dumb.hyp4.Cog", "java.lang.Runnable" // Allow Runnable for proxy example
+            "dumb.hyp5.Cog", "java.lang.Runnable" // Allow Runnable for proxy example
             // Add other safe classes as needed
         );
         private static final Set<String> ALLOWED_PACKAGES = Set.of("java.lang", "java.util");
@@ -1255,6 +1242,12 @@ public final class Cog {
         public JvmBridge(Cog cog) {
             this.cog = cog;
             this.lookup = MethodHandles.lookup();
+
+            cog.IS("JavaNew", this::javaNew);
+            cog.IS("JavaCall", this::javaCall);
+            cog.IS("JavaStaticCall", this::javaStaticCall);
+            cog.IS("JavaField", this::javaField);
+            cog.IS("JavaProxy", this::javaProxy);
         }
 
         // --- Security Check ---
