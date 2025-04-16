@@ -14,21 +14,26 @@ Identify Java code-paths that can/should be rewritten as MeTTa script to lead th
 - This also supports the system's self-integration as an autonomous system.
 - Focus on core components for maximum impact.  Peripheral components are candidates for redesign, so do not invest in them now.
 
-# Deliver a single, self-documenting Java class:
+# Deliver a single file:
  - Complete (fully functional)
     - Ensure all functionality remains present, in some way.  
     - Complete any missing or planned functionality.
+ - Professional-grade, not educational
  - Correct (bug-free and logically sound)
  - Compact (minimal codebase size)
-   - Use syntax constructs, like Ternary operator, to minimize lines and tokens.
-   - Use the latest Java language version's syntax options to best express code 
+   - Using space-saving syntax constructs, like the ternary/switch/etc..., to minimize lines and tokens
+   - Using the latest language version's syntax options to best express code 
  - Consolidated (avoids unnecessary separation)
- - Deduplicated (no redundant logic) - introduce helpful abstractions functions, parameters, and classes to share common code.  Apply "don't repeat yourself" principles.
+ - Deduplicated (no redundant logic)
+   - Introduce helpful abstractions functions, parameters, and classes to share common code  
+   - Apply "don't repeat yourself" principles
  - Modular (logically organized, supporting abstraction)
  - Self-documenting
    - Clear naming and structure
-   - Comment ONLY when code requires explanation, does something which isn't obvious, or deliberately contradicts its implied nature.
-   - If a method comment is necessary, a clear one-line comment is preferable to a verbose redundant JavaDoc comment
- - Using the latest version of the Java language and APIs
- - Use @Nullable, but not @NotNull
+   - No Comments
  - Do not rename identifiers. Names are carefully chosen.
+ - Ensure consistency, and shorten unnecessarily lengthy identifiers.
+ - Use the latest version of the language, APIs, and dependencies
+
+
+- Use @Nullable, but not @NotNull
