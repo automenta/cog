@@ -32,8 +32,8 @@ Identify Java code-paths that can/should be rewritten as MeTTa script to lead th
    - Clear naming and structure
    - No Comments
  - Do not rename identifiers. Names are carefully chosen.
- - Ensure consistency, and shorten unnecessarily lengthy identifiers.
  - Use the latest version of the language, APIs, and dependencies
 
 
 - Use @Nullable, but not @NotNull
+- Ensure consistency, and shorten unnecessarily lengthy identifiers.
