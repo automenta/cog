@@ -3,6 +3,7 @@ package dumb.cognote8;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
+import org.jetbrains.annotations.Nullable;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONTokener;
@@ -51,24 +52,26 @@ import static java.util.Objects.requireNonNullElse;
  */
 public class CogNote extends WebSocketServer {
 
-    // --- Configuration & UI Styling ---
-    private static final int UI_FONT_SIZE = 16;
+    private static final int UI_FONT_SIZE = 20;
     private static final Font MONOSPACED_FONT = new Font(Font.MONOSPACED, Font.PLAIN, UI_FONT_SIZE - 2);
     private static final Font UI_DEFAULT_FONT = new Font(Font.SANS_SERIF, Font.PLAIN, UI_FONT_SIZE);
-    private static final Font UI_SMALL_FONT = new Font(Font.SANS_SERIF, Font.PLAIN, UI_FONT_SIZE - 4);
     private static final AtomicLong idCounter = new AtomicLong(System.currentTimeMillis());
-    // --- Constants ---
+
+    @Deprecated private static final int lockPauseMS = 5;
+
     private static final Set<String> REFLEXIVE_PREDICATES = Set.of("instance", "subclass", "subrelation", "equivalent", "same", "equal", "domain", "range"); // Predicates where (pred x x) is trivial
+
     // --- Reasoner Parameters ---
-    private final int maxKbSize;
+    private final int capacity;
     private final boolean broadcastInputAssertions;
-    private final String llmApiUrl;
-    private final String llmModel;
+    private final String llmApiUrl, llmModel;
+
     // --- Core Components ---
     private final KnowledgeBase knowledgeBase;
     private final ReasonerEngine reasonerEngine;
     private final List<CallbackRegistration> callbackRegistrations = new CopyOnWriteArrayList<>();
     private final ConcurrentMap<String, Set<String>> noteIdToAssertionIds = new ConcurrentHashMap<>();
+
     // --- Execution & Control ---
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(30))
@@ -76,25 +79,23 @@ public class CogNote extends WebSocketServer {
             .build();
     private final SwingUI swingUI;
     private final Object pauseLock = new Object();
-    private volatile String reasonerStatus = "Idle";
-    private volatile boolean running = true;
-    private volatile boolean paused = false;
 
-    // --- Constructor ---
-    public CogNote(int port, int maxKbSize, boolean broadcastInput, String llmUrl, String llmModel, SwingUI ui) {
+    private volatile String reasonerStatus = "Idle";
+    private volatile boolean running = true, paused = false;
+
+    public CogNote(int port, int capacity, boolean broadcastInput, String llmUrl, String llmModel, SwingUI ui) {
         super(new InetSocketAddress(port));
-        this.maxKbSize = Math.max(10, maxKbSize);
+        this.capacity = capacity;
         this.broadcastInputAssertions = broadcastInput;
         this.llmApiUrl = requireNonNullElse(llmUrl, "http://localhost:11434/api/chat");
         this.llmModel = requireNonNullElse(llmModel, "llamablit"); // Default to llama3
         this.swingUI = Objects.requireNonNull(ui, "SwingUI cannot be null");
-        this.knowledgeBase = new KnowledgeBase(this.maxKbSize, this::invokeEvictionCallbacks);
+        this.knowledgeBase = new KnowledgeBase(this.capacity, this::invokeEvictionCallbacks);
         this.reasonerEngine = new ReasonerEngine(knowledgeBase, () -> CogNote.generateId(""), this::invokeCallbacks);
         System.out.printf("Reasoner config: Port=%d, KBSize=%d, BroadcastInput=%b, LLM_URL=%s, LLM_Model=%s%n",
-                port, this.maxKbSize, this.broadcastInputAssertions, this.llmApiUrl, this.llmModel);
+                port, this.capacity, this.broadcastInputAssertions, this.llmApiUrl, this.llmModel);
     }
 
-    // --- Main Method ---
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
             int port = 8887;
@@ -154,7 +155,7 @@ public class CogNote extends WebSocketServer {
                 System.exit(1);
             } catch (IOException e) {
                 System.err.println("Error loading initial file: " + e.getMessage());
-                if (ui != null) ui.dispose();
+                ui.dispose();
                 System.exit(1);
             } catch (Exception e) {
                 System.err.println("Failed to initialize/start: " + e.getMessage());
@@ -219,14 +220,22 @@ public class CogNote extends WebSocketServer {
         return Optional.of(b);
     } // Example usage
 
+    private static void sleepOnError() {
+        try {
+            Thread.sleep(100);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     // --- WebSocket Communication ---
     private void broadcastMessage(String type, Assertion assertion) {
         var kifString = assertion.toKifString();
         var message = switch (type) {
-            case "assert-added" -> String.format("assert-derived %.4f %s", assertion.priority(), kifString);
-            case "assert-input" -> String.format("assert-input %.4f %s", assertion.priority(), kifString);
-            case "assert-retracted" -> String.format("retract %s", assertion.id());
-            case "evict" -> String.format("evict %s", assertion.id());
+            case "assert-added" -> String.format("assert-derived %.4f %s", assertion.pri, kifString);
+            case "assert-input" -> String.format("assert-input %.4f %s", assertion.pri, kifString);
+            case "assert-retracted" -> String.format("retract %s", assertion.id);
+            case "evict" -> String.format("evict %s", assertion.id);
             default -> type + " " + kifString;
         };
         try {
@@ -335,9 +344,9 @@ public class CogNote extends WebSocketServer {
         var lhs = list.get(1);
         var rhs = list.get(2);
         var weight = list.calculateWeight();
-        var priority = 10.0 / (1.0 + weight);
+        var pri = 10.0 / (1.0 + weight);
         boolean isOriented = lhs.calculateWeight() > rhs.calculateWeight();
-        var pa = new PotentialAssertion(list, priority, Set.of(), sourceId, true, isOriented, null);
+        var pa = new PotentialAssertion(list, pri, Set.of(), sourceId, true, isOriented, null);
         reasonerEngine.submitPotentialAssertion(pa);
     }
 
@@ -348,8 +357,8 @@ public class CogNote extends WebSocketServer {
             System.err.println("Warning: Ignoring trivial assertion: " + list.toKifString());
         } else {
             var weight = list.calculateWeight();
-            var priority = 10.0 / (1.0 + weight);
-            var pa = new PotentialAssertion(list, priority, Set.of(), sourceId, false, false, null);
+            var pri = 10.0 / (1.0 + weight);
+            var pa = new PotentialAssertion(list, pri, Set.of(), sourceId, false, false, null);
             reasonerEngine.submitPotentialAssertion(pa);
         }
     }
@@ -371,7 +380,7 @@ public class CogNote extends WebSocketServer {
                 v -> v,
                 v -> new KifAtom("skolem_" + v.name().substring(1) + "_" + idCounter.incrementAndGet())
         ));
-        var skolemizedBody = Unifier.substitute(body, skolemBindings);
+        var skolemizedBody = Unifier.subst(body, skolemBindings);
         System.out.println("Skolemized '" + existsExpr.toKifString() + "' to '" + skolemizedBody.toKifString() + "' from source " + sourceId);
         queueExpressionFromSource(skolemizedBody, sourceId + "-skolemized");
     }
@@ -535,14 +544,14 @@ public class CogNote extends WebSocketServer {
     // --- Direct Input Processing Methods ---
     public void submitPotentialAssertion(PotentialAssertion pa) {
         if (pa == null) return;
-        if (isTrivial(pa.kif())) { // Check triviality before submitting
-            System.err.println("Warning: Ignoring submission of trivial assertion: " + pa.kif().toKifString());
+        if (isTrivial(pa.kif)) { // Check triviality before submitting
+            System.err.println("Warning: Ignoring submission of trivial assertion: " + pa.kif.toKifString());
             return;
         }
         reasonerEngine.submitPotentialAssertion(pa);
-        if (pa.sourceNoteId() != null && !pa.isEquality() && !pa.kif().containsVariable()) {
+        if (pa.sourceNoteId() != null && !pa.isEquality() && !pa.kif.containsVariable()) {
             var tempId = generateId("input");
-            var inputAssertion = new Assertion(tempId, pa.kif(), pa.priority(), System.currentTimeMillis(), pa.sourceNoteId(), Set.of(), pa.isEquality(), pa.isOrientedEquality());
+            var inputAssertion = new Assertion(tempId, pa.kif, pa.pri, System.currentTimeMillis(), pa.sourceNoteId(), Set.of(), pa.isEquality(), pa.isOrientedEquality());
             invokeCallbacks("assert-input", inputAssertion);
         }
     }
@@ -601,7 +610,7 @@ public class CogNote extends WebSocketServer {
     void invokeCallbacks(String type, Assertion assertion) {
         // Link assertion to note ID *after* commit only if sourceNoteId is present
         if (assertion.sourceNoteId() != null) {
-            noteIdToAssertionIds.computeIfAbsent(assertion.sourceNoteId(), k -> ConcurrentHashMap.newKeySet()).add(assertion.id());
+            noteIdToAssertionIds.computeIfAbsent(assertion.sourceNoteId(), k -> ConcurrentHashMap.newKeySet()).add(assertion.id);
         }
 
         boolean shouldBroadcast = switch (type) {
@@ -630,7 +639,7 @@ public class CogNote extends WebSocketServer {
         // Remove from note mapping if evicted
         if (evictedAssertion.sourceNoteId() != null) {
             noteIdToAssertionIds.computeIfPresent(evictedAssertion.sourceNoteId(), (k, set) -> {
-                set.remove(evictedAssertion.id());
+                set.remove(evictedAssertion.id);
                 return set.isEmpty() ? null : set;
             });
         }
@@ -644,7 +653,7 @@ public class CogNote extends WebSocketServer {
             long commitQueueSize = reasonerEngine.getCommitQueueSize();
             int ruleCount = reasonerEngine.getRuleCount();
             final String statusText = String.format("KB: %d/%d | Tasks: %d | Commits: %d | Rules: %d | Status: %s",
-                    kbSize, maxKbSize, taskQueueSize, commitQueueSize, ruleCount, reasonerEngine.getCurrentStatus());
+                    kbSize, capacity, taskQueueSize, commitQueueSize, ruleCount, reasonerEngine.getCurrentStatus());
             SwingUtilities.invokeLater(() -> swingUI.statusLabel.setText(statusText));
         }
     }
@@ -966,7 +975,7 @@ public class CogNote extends WebSocketServer {
     }
 
     // --- Reasoner Data Records ---
-    record Assertion(String id, KifList kif, double priority, long timestamp, String sourceNoteId, Set<String> support,
+    record Assertion(String id, KifList kif, double pri, long timestamp, String sourceNoteId, Set<String> support,
                      boolean isEquality, boolean isOrientedEquality) implements Comparable<Assertion> {
         Assertion {
             Objects.requireNonNull(id);
@@ -976,7 +985,7 @@ public class CogNote extends WebSocketServer {
 
         @Override
         public int compareTo(Assertion other) {
-            return Double.compare(this.priority, other.priority);
+            return Double.compare(this.pri, other.pri);
         } // Min-heap for eviction
 
         String toKifString() {
@@ -984,7 +993,7 @@ public class CogNote extends WebSocketServer {
         }
     }
 
-    record Rule(String id, KifList ruleForm, KifTerm antecedent, KifTerm consequent, double priority,
+    record Rule(String id, KifList ruleForm, KifTerm antecedent, KifTerm consequent, double pri,
                 List<KifList> antecedents) {
         Rule {
             Objects.requireNonNull(id);
@@ -994,7 +1003,7 @@ public class CogNote extends WebSocketServer {
             antecedents = List.copyOf(Objects.requireNonNull(antecedents));
         }
 
-        static Rule parseRule(String id, KifList ruleForm, double priority) throws IllegalArgumentException {
+        static Rule parseRule(String id, KifList ruleForm, double pri) throws IllegalArgumentException {
             if (!(ruleForm.getOperator().filter(op -> op.equals("=>") || op.equals("<=>")).isPresent() && ruleForm.size() == 3))
                 throw new IllegalArgumentException("Rule form must be (=> ant con) or (<=> ant con): " + ruleForm.toKifString());
             var antTerm = ruleForm.get(1);
@@ -1011,7 +1020,7 @@ public class CogNote extends WebSocketServer {
                         throw new IllegalArgumentException("Antecedent must be a KIF list or (and list1...): " + antTerm.toKifString());
             };
             validateUnboundVariables(ruleForm, antTerm, conTerm);
-            return new Rule(id, ruleForm, antTerm, conTerm, priority, parsedAntecedents);
+            return new Rule(id, ruleForm, antTerm, conTerm, pri, parsedAntecedents);
         }
 
         private static void validateUnboundVariables(KifList ruleForm, KifTerm antecedent, KifTerm consequent) {
@@ -1055,7 +1064,7 @@ public class CogNote extends WebSocketServer {
         }
     }
 
-    record PotentialAssertion(KifList kif, double priority, Set<String> support, String sourceId, boolean isEquality,
+    record PotentialAssertion(KifList kif, double pri, Set<String> support, String sourceId, boolean isEquality,
                               boolean isOrientedEquality, String sourceNoteId) {
         PotentialAssertion {
             Objects.requireNonNull(kif);
@@ -1074,24 +1083,24 @@ public class CogNote extends WebSocketServer {
         }
     }
 
-    record InferenceTask(TaskType type, double priority, Object data) implements Comparable<InferenceTask> {
+    record InferenceTask(TaskType type, double pri, Object data) implements Comparable<InferenceTask> {
         InferenceTask {
             Objects.requireNonNull(type);
             Objects.requireNonNull(data);
         }
 
-        static InferenceTask matchAntecedent(Rule rule, Assertion trigger, Map<KifVar, KifTerm> bindings, double priority) {
-            return new InferenceTask(TaskType.MATCH_ANTECEDENT, priority, new MatchContext(rule, trigger.id(), bindings));
+        static InferenceTask matchAntecedent(Rule rule, Assertion trigger, Map<KifVar, KifTerm> bindings, double pri) {
+            return new InferenceTask(TaskType.MATCH_ANTECEDENT, pri, new MatchContext(rule, trigger.id, bindings));
         }
 
-        static InferenceTask applyRewrite(Assertion rule, Assertion target, double priority) {
-            return new InferenceTask(TaskType.APPLY_ORDERED_REWRITE, priority, new RewriteContext(rule, target));
+        static InferenceTask applyRewrite(Assertion rule, Assertion target, double pri) {
+            return new InferenceTask(TaskType.APPLY_ORDERED_REWRITE, pri, new RewriteContext(rule, target));
         }
 
         @Override
         public int compareTo(InferenceTask other) {
-            return Double.compare(other.priority, this.priority);
-        } // Max-heap by priority
+            return Double.compare(other.pri, this.pri);
+        } // Max-heap by pri
     }
 
     record MatchContext(Rule rule, String triggerAssertionId, Map<KifVar, KifTerm> initialBindings) {
@@ -1119,11 +1128,11 @@ public class CogNote extends WebSocketServer {
         private final PathNode root = new PathNode();
 
         void add(Assertion assertion) {
-            addPathsRecursive(assertion.kif(), assertion.id(), root);
+            addPathsRecursive(assertion.kif, assertion.id, root);
         }
 
         void remove(Assertion assertion) {
-            removePathsRecursive(assertion.kif(), assertion.id(), root);
+            removePathsRecursive(assertion.kif, assertion.id, root);
         }
 
         void clear() {
@@ -1132,19 +1141,19 @@ public class CogNote extends WebSocketServer {
         }
 
         Set<String> findUnifiable(KifTerm queryTerm) {
-            Set<String> c = ConcurrentHashMap.newKeySet();
+            Set<String> c = new HashSet<>();//ConcurrentHashMap.newKeySet();
             findUnifiableRecursive(queryTerm, root, c);
             return c;
         }
 
-        Set<String> findInstances(KifTerm queryPattern) {
-            Set<String> c = ConcurrentHashMap.newKeySet();
+        Stream<String> findInstances(KifTerm queryPattern) {
+            Set<String> c = new HashSet<>(); //ConcurrentHashMap.newKeySet();
             findInstancesRecursive(queryPattern, root, c);
-            return c;
+            return c.stream();
         }
 
         Set<String> findGeneralizations(KifTerm queryTerm) {
-            Set<String> c = ConcurrentHashMap.newKeySet();
+            Set<String> c = new HashSet<>(); //ConcurrentHashMap.newKeySet();
             findGeneralizationsRecursive(queryTerm, root, c);
             return c;
         }
@@ -1205,19 +1214,20 @@ public class CogNote extends WebSocketServer {
             if (indexNode == null) return;
             candidates.addAll(indexNode.assertionIdsHere); // Add all IDs at this level
 
+            final var c = indexNode.children;
             switch (queryTerm) {
                 case KifAtom queryAtom -> {
                     // Match Atom or Var in index
-                    Optional.ofNullable(indexNode.children.get(queryAtom.value())).ifPresent(n -> findUnifiableRecursive(queryAtom, n, candidates));
-                    Optional.ofNullable(indexNode.children.get(PathNode.VAR_MARKER)).ifPresent(n -> collectAllAssertionIds(n, candidates));
+                    Optional.ofNullable(c.get(queryAtom.value())).ifPresent(n -> findUnifiableRecursive(queryAtom, n, candidates));
+                    Optional.ofNullable(c.get(PathNode.VAR_MARKER)).ifPresent(n -> collectAllAssertionIds(n, candidates));
                 }
                 case KifVar queryVar ->
-                        indexNode.children.values().forEach(childNode -> collectAllAssertionIds(childNode, candidates)); // Var matches anything
+                        c.values().forEach(childNode -> collectAllAssertionIds(childNode, candidates)); // Var matches anything
                 case KifList queryList -> {
                     // Match Var in index
-                    Optional.ofNullable(indexNode.children.get(PathNode.VAR_MARKER)).ifPresent(n -> collectAllAssertionIds(n, candidates));
+                    Optional.ofNullable(c.get(PathNode.VAR_MARKER)).ifPresent(n -> collectAllAssertionIds(n, candidates));
                     // Match Operator (simplified)
-                    queryList.getOperator().flatMap(op -> Optional.ofNullable(indexNode.children.get(op)))
+                    queryList.getOperator().flatMap(op -> Optional.ofNullable(c.get(op)))
                             .ifPresent(opNode -> {
                                 candidates.addAll(opNode.assertionIdsHere); // Add IDs at operator node
                                 // TODO: Refine list matching beyond operator
@@ -1302,17 +1312,17 @@ public class CogNote extends WebSocketServer {
         Optional<Assertion> commitAssertion(PotentialAssertion pa, String newId, long timestamp) {
             kbCommitLock.writeLock().lock();
             try {
-                if (isTrivial(pa.kif())) return Optional.empty(); // Double check triviality inside lock
+                if (isTrivial(pa.kif)) return Optional.empty(); // Double check triviality inside lock
 
-                var newAssertion = new Assertion(newId, pa.kif(), pa.priority(), timestamp, pa.sourceNoteId(), pa.support(), pa.isEquality(), pa.isOrientedEquality());
+                var newAssertion = new Assertion(newId, pa.kif, pa.pri, timestamp, pa.sourceNoteId(), pa.support(), pa.isEquality(), pa.isOrientedEquality());
 
                 // Check for exact duplicate (using index for efficiency)
-                if (!newAssertion.kif().containsVariable() && findExactMatch(newAssertion.kif()) != null)
+                if (!newAssertion.kif.containsVariable() && findExactMatch(newAssertion.kif) != null)
                     return Optional.empty();
 
                 enforceKbCapacity();
                 if (assertionsById.size() >= maxKbSize) {
-                    System.err.printf("Warning: KB full (%d/%d), cannot add: %s%n", assertionsById.size(), maxKbSize, pa.kif().toKifString());
+                    System.err.printf("Warning: KB full (%d/%d), cannot add: %s%n", assertionsById.size(), maxKbSize, pa.kif.toKifString());
                     return Optional.empty();
                 }
 
@@ -1355,9 +1365,9 @@ public class CogNote extends WebSocketServer {
         boolean isSubsumed(PotentialAssertion pa) {
             kbCommitLock.readLock().lock();
             try {
-                Set<String> candidateIds = pathIndex.findGeneralizations(pa.kif());
+                Set<String> candidateIds = pathIndex.findGeneralizations(pa.kif);
                 if (candidateIds.isEmpty()) return false;
-                return candidateIds.stream().map(assertionsById::get).filter(Objects::nonNull).anyMatch(candidate -> Unifier.match(candidate.kif(), pa.kif(), Map.of()) != null);
+                return candidateIds.stream().map(assertionsById::get).filter(Objects::nonNull).anyMatch(candidate -> Unifier.match(candidate.kif, pa.kif, Map.of()) != null);
             } finally {
                 kbCommitLock.readLock().unlock();
             }
@@ -1366,7 +1376,7 @@ public class CogNote extends WebSocketServer {
         Stream<Assertion> findUnifiableAssertions(KifTerm queryTerm) {
             kbCommitLock.readLock().lock();
             try {
-                Set<String> ids = new HashSet<>(new ArrayList<>(pathIndex.findUnifiable(queryTerm)));
+                Set<String> ids = pathIndex.findUnifiable(queryTerm);
                 return ids.stream().map(assertionsById::get).filter(Objects::nonNull);
             } // Copy IDs before releasing lock
             finally {
@@ -1377,8 +1387,7 @@ public class CogNote extends WebSocketServer {
         Stream<Assertion> findInstancesOf(KifTerm queryPattern) {
             kbCommitLock.readLock().lock();
             try {
-                Set<String> ids = new HashSet<>(new ArrayList<>(pathIndex.findInstances(queryPattern)));
-                return ids.stream().map(assertionsById::get).filter(Objects::nonNull).filter(a -> Unifier.match(queryPattern, a.kif(), Map.of()) != null);
+                return pathIndex.findInstances(queryPattern).map(assertionsById::get).filter(Objects::nonNull).filter(a -> Unifier.match(queryPattern, a.kif, Map.of()) != null);
             } // Copy IDs + final check
             finally {
                 kbCommitLock.readLock().unlock();
@@ -1388,8 +1397,7 @@ public class CogNote extends WebSocketServer {
         Assertion findExactMatch(KifList groundKif) {
             kbCommitLock.readLock().lock();
             try {
-                Set<String> ids = pathIndex.findInstances(groundKif);
-                return ids.stream().map(assertionsById::get).filter(Objects::nonNull).filter(a -> a.kif().equals(groundKif)).findFirst().orElse(null);
+                return pathIndex.findInstances(groundKif).map(assertionsById::get).filter(Objects::nonNull).filter(a -> a.kif.equals(groundKif)).findFirst().orElse(null);
             } finally {
                 kbCommitLock.readLock().unlock();
             }
@@ -1422,7 +1430,7 @@ public class CogNote extends WebSocketServer {
         private void enforceKbCapacity() {
             while (assertionsById.size() >= maxKbSize && !evictionQueue.isEmpty()) {
                 Assertion lowest = evictionQueue.poll();
-                if (lowest != null && assertionsById.remove(lowest.id()) != null) { // Remove only if still present
+                if (lowest != null && assertionsById.remove(lowest.id) != null) { // Remove only if still present
                     pathIndex.remove(lowest);
                     evictionCallback.accept(lowest);
                 }
@@ -1524,7 +1532,7 @@ public class CogNote extends WebSocketServer {
 
         void addRule(Rule rule) {
             if (rules.add(rule)) {
-                System.out.println("Added rule: " + rule.id() + " " + rule.ruleForm().toKifString());
+                System.out.println("Added rule: " + rule.id + " " + rule.ruleForm().toKifString());
                 triggerMatchingForNewRule(rule);
             }
         }
@@ -1536,13 +1544,11 @@ public class CogNote extends WebSocketServer {
         private void commitLoop() {
             while (running && !Thread.currentThread().isInterrupted()) {
                 try {
-                    synchronized (pauseLock) {
-                        while (paused && running) pauseLock.wait(500);
-                    }
+                    waitPauseLock();
                     if (!running) break;
-                    PotentialAssertion pa = commitQueue.take();
+                    var pa = commitQueue.take();
                     currentStatus = "Committing";
-                    if (!isTrivial(pa.kif()) && !kb.isSubsumed(pa)) { // Check triviality and subsumption
+                    if (!isTrivial(pa.kif) && !kb.isSubsumed(pa)) { // Check triviality and subsumption
                         kb.commitAssertion(pa, generateFactId(pa), System.currentTimeMillis()).ifPresent(committed -> {
                             callbackNotifier.accept("assert-added", committed);
                             generateNewTasks(committed);
@@ -1556,11 +1562,7 @@ public class CogNote extends WebSocketServer {
                     System.err.println("Error in commit loop: " + e.getMessage());
                     e.printStackTrace();
                     currentStatus = "Error (Commit)";
-                    try {
-                        Thread.sleep(100);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                    }
+                    sleepOnError();
                 }
             }
             System.out.println("Commit thread finished.");
@@ -1569,13 +1571,11 @@ public class CogNote extends WebSocketServer {
         private void inferenceLoop() {
             while (running && !Thread.currentThread().isInterrupted()) {
                 try {
-                    synchronized (pauseLock) {
-                        while (paused && running) pauseLock.wait(500);
-                    }
+                    waitPauseLock();
                     if (!running) break;
-                    InferenceTask task = taskQueue.take();
-                    currentStatus = "Inferring (" + task.type() + ")";
-                    switch (task.type()) {
+                    var task = taskQueue.take();
+                    currentStatus = "Inferring (" + task.type + ")";
+                    switch (task.type) {
                         case MATCH_ANTECEDENT -> handleMatchAntecedentTask(task);
                         case APPLY_ORDERED_REWRITE -> handleApplyRewriteTask(task);
                     }
@@ -1587,69 +1587,74 @@ public class CogNote extends WebSocketServer {
                     System.err.println("Error in inference loop: " + e.getMessage());
                     e.printStackTrace();
                     currentStatus = "Error (Inference)";
-                    try {
-                        Thread.sleep(100);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                    }
+                    sleepOnError();
                 }
             }
             System.out.println("Inference worker finished.");
         }
 
+        private void waitPauseLock() throws InterruptedException {
+            synchronized (pauseLock) {
+                while (paused && running) {
+                    pauseLock.wait(lockPauseMS);
+                }
+            }
+        }
+
         private void handleMatchAntecedentTask(InferenceTask task) {
-            if (!(task.data() instanceof MatchContext ctx)) return;
-            findMatchesRecursive(ctx.rule(), ctx.rule().antecedents(), ctx.initialBindings(), Set.of(ctx.triggerAssertionId()))
-                    .forEach(matchResult -> {
-                        var consequentTerm = Unifier.substitute(ctx.rule().consequent(), matchResult.bindings());
-                        if (consequentTerm instanceof KifList derived && !derived.containsVariable() && !isTrivial(derived)) {
-                            double derivedPriority = calculateDerivedPriority(matchResult.supportIds(), ctx.rule().priority());
-                            String commonNoteId = findCommonSourceNodeId(matchResult.supportIds());
-                            boolean isEq = derived.getOperator().filter("="::equals).isPresent(); // Check if derived result is equality
-                            boolean isOriented = isEq && derived.size() == 3 && derived.get(1).calculateWeight() > derived.get(2).calculateWeight();
-                            var pa = new PotentialAssertion(derived, derivedPriority, matchResult.supportIds(), ctx.rule().id(), isEq, isOriented, commonNoteId);
-                            submitPotentialAssertion(pa);
-                        }
-                    });
+            if (task.data instanceof MatchContext(Rule rule, String id, Map<KifVar, KifTerm> bindings)) {
+                findMatchesRecursive(rule, rule.antecedents(), bindings, Set.of(id))
+                        .forEach(matchResult -> {
+                            var consequentTerm = Unifier.subst(rule.consequent, matchResult.bindings);
+                            if (consequentTerm instanceof KifList derived && !derived.containsVariable() && !isTrivial(derived)) {
+                                double derivedPri = calculateDerivedPri(matchResult.supportIds(), rule.pri);
+                                String commonNoteId = findCommonSourceNodeId(matchResult.supportIds());
+                                boolean isEq = derived.getOperator().filter("="::equals).isPresent(); // Check if derived result is equality
+                                boolean isOriented = isEq && derived.size() == 3 && derived.get(1).calculateWeight() > derived.get(2).calculateWeight();
+                                var pa = new PotentialAssertion(derived, derivedPri, matchResult.supportIds(), rule.id, isEq, isOriented, commonNoteId);
+                                submitPotentialAssertion(pa);
+                            }
+                        });
+            }
         }
 
         private Stream<MatchResult> findMatchesRecursive(Rule rule, List<KifList> remainingClauses, Map<KifVar, KifTerm> currentBindings, Set<String> currentSupportIds) {
             if (remainingClauses.isEmpty()) return Stream.of(new MatchResult(currentBindings, currentSupportIds));
             var clauseToMatch = remainingClauses.getFirst();
             var nextRemainingClauses = remainingClauses.subList(1, remainingClauses.size());
-            var substitutedClauseTerm = Unifier.fullySubstitute(clauseToMatch, currentBindings);
+            var substitutedClauseTerm = Unifier.substFully(clauseToMatch, currentBindings);
             if (!(substitutedClauseTerm instanceof KifList substitutedClause))
                 return Stream.empty(); // Should not happen if rule is valid
 
             return kb.findUnifiableAssertions(substitutedClause).flatMap(candidate -> {
-                Map<KifVar, KifTerm> newBindings = Unifier.unify(substitutedClause, candidate.kif(), currentBindings);
+                Map<KifVar, KifTerm> newBindings = Unifier.unify(substitutedClause, candidate.kif, currentBindings);
                 if (newBindings != null) {
                     Set<String> nextSupport = new HashSet<>(currentSupportIds);
-                    nextSupport.add(candidate.id());
+                    nextSupport.add(candidate.id);
                     return findMatchesRecursive(rule, nextRemainingClauses, newBindings, nextSupport);
                 } else return Stream.empty();
             });
         }
 
         private void handleApplyRewriteTask(InferenceTask task) {
-            if (!(task.data() instanceof RewriteContext ctx)) return;
-            Assertion rewriteRule = ctx.rewriteRule(), targetAssertion = ctx.targetAssertion();
-            if (!rewriteRule.isEquality() || !rewriteRule.isOrientedEquality() || rewriteRule.kif().size() != 3)
+            if (!(task.data instanceof RewriteContext(Assertion rule, Assertion assertion)))
+                return;
+            if (!rule.isEquality() || !rule.isOrientedEquality() || rule.kif.size() != 3)
                 return; // Invalid rule
 
-            KifTerm lhsPattern = rewriteRule.kif().get(1), rhsTemplate = rewriteRule.kif().get(2);
-            Optional<KifTerm> rewrittenTermOpt = Unifier.rewrite(targetAssertion.kif(), lhsPattern, rhsTemplate);
+            KifTerm lhsPattern = rule.kif.get(1), rhsTemplate = rule.kif.get(2);
+            Optional<KifTerm> rewrittenTermOpt = Unifier.rewrite(assertion.kif, lhsPattern, rhsTemplate);
 
             rewrittenTermOpt.ifPresent(rewrittenTerm -> {
-                if (rewrittenTerm instanceof KifList rewrittenList && !rewrittenList.equals(targetAssertion.kif()) && !isTrivial(rewrittenList)) {
-                    Set<String> support = new HashSet<>(targetAssertion.support());
-                    support.add(targetAssertion.id());
-                    support.add(rewriteRule.id());
-                    double derivedPriority = calculateDerivedPriority(support, task.priority());
+                if (rewrittenTerm instanceof KifList rewrittenList && !rewrittenList.equals(assertion.kif) && !isTrivial(rewrittenList)) {
+                    Set<String> support = new HashSet<>(assertion.support());
+                    support.add(assertion.id);
+                    support.add(rule.id);
+                    double derivedPri = calculateDerivedPri(support, task.pri);
                     String commonNoteId = findCommonSourceNodeId(support);
                     boolean resultIsEq = rewrittenList.getOperator().filter("="::equals).isPresent();
                     boolean resultIsOriented = resultIsEq && rewrittenList.size() == 3 && rewrittenList.get(1).calculateWeight() > rewrittenList.get(2).calculateWeight();
-                    var pa = new PotentialAssertion(rewrittenList, derivedPriority, support, rewriteRule.id(), resultIsEq, resultIsOriented, commonNoteId);
+                    var pa = new PotentialAssertion(rewrittenList, derivedPri, support, rule.id, resultIsEq, resultIsOriented, commonNoteId);
                     submitPotentialAssertion(pa);
                 }
             });
@@ -1658,41 +1663,42 @@ public class CogNote extends WebSocketServer {
         private void generateNewTasks(Assertion newAssertion) {
             // 1. Trigger rule matching
             rules.forEach(rule -> rule.antecedents().forEach(antecedentClause -> {
-                var c = antecedentClause.getOperator().map(op -> op.equals(newAssertion.kif().getOperator().orElse(null))).orElse(true);
+                var c = antecedentClause.getOperator().map(op -> op.equals(newAssertion.kif.getOperator().orElse(null))).orElse(true);
                 // Operator pre-check
                 if (c) {
-                    Map<KifVar, KifTerm> bindings = Unifier.unify(antecedentClause, newAssertion.kif(), Map.of());
+                    Map<KifVar, KifTerm> bindings = Unifier.unify(antecedentClause, newAssertion.kif, Map.of());
                     if (bindings != null)
-                        taskQueue.put(InferenceTask.matchAntecedent(rule, newAssertion, bindings, calculateTaskPriority(rule.priority(), newAssertion.priority())));
+                        taskQueue.put(InferenceTask.matchAntecedent(rule, newAssertion, bindings, calculateTaskPri(rule.pri, newAssertion.pri)));
 
                 }
             }));
 
             // 2. Trigger rewrites
             if (newAssertion.isEquality() && newAssertion.isOrientedEquality()) { // New assertion IS a rewrite rule
-                KifTerm lhsPattern = newAssertion.kif().get(1);
+                KifTerm lhsPattern = newAssertion.kif.get(1);
                 kb.findInstancesOf(lhsPattern)
-                        .filter(target -> !target.id().equals(newAssertion.id()))
-                        .forEach(target -> taskQueue.put(InferenceTask.applyRewrite(newAssertion, target, calculateTaskPriority(newAssertion.priority(), target.priority()))));
+                        .filter(target -> !target.id.equals(newAssertion.id))
+                        .forEach(target -> taskQueue.put(InferenceTask.applyRewrite(newAssertion, target, calculateTaskPri(newAssertion.pri, target.pri))));
             } else { // New assertion is a standard fact, find rules that apply TO it
                 kb.getAllAssertions().stream() // TODO: Optimize KB lookup for rewrite rules
                         .filter(Assertion::isOrientedEquality)
-                        .filter(rule -> rule.kif().size() == 3) // Ensure valid equality structure
+                        .filter(rule -> rule.kif.size() == 3) // Ensure valid equality structure
                         .forEach(rule -> {
-                            KifTerm lhsPattern = rule.kif().get(1);
-                            if (Unifier.match(lhsPattern, newAssertion.kif(), Map.of()) != null) {
-                                taskQueue.put(InferenceTask.applyRewrite(rule, newAssertion, calculateTaskPriority(rule.priority(), newAssertion.priority())));
+                            KifTerm lhsPattern = rule.kif.get(1);
+                            if (Unifier.match(lhsPattern, newAssertion.kif, Map.of()) != null) {
+                                taskQueue.put(InferenceTask.applyRewrite(rule, newAssertion, 
+                                        calculateTaskPri(rule.pri, newAssertion.pri)));
                             }
                         });
             }
         }
 
         private void triggerMatchingForNewRule(Rule newRule) {
-            System.out.println("Triggering matching for new rule: " + newRule.id());
-            kb.getAllAssertions().forEach(existing -> newRule.antecedents().forEach(clause -> {
-                Map<KifVar, KifTerm> bindings = Unifier.unify(clause, existing.kif(), Map.of());
+            System.out.println("Triggering matching for new rule: " + newRule.id);
+            kb.getAllAssertions().forEach(existing -> newRule.antecedents.forEach(clause -> {
+                Map<KifVar, KifTerm> bindings = Unifier.unify(clause, existing.kif, Map.of());
                 if (bindings != null)
-                    taskQueue.put(InferenceTask.matchAntecedent(newRule, existing, bindings, calculateTaskPriority(newRule.priority(), existing.priority())));
+                    taskQueue.put(InferenceTask.matchAntecedent(newRule, existing, bindings, calculateTaskPri(newRule.pri, existing.pri)));
             }));
         }
 
@@ -1700,15 +1706,15 @@ public class CogNote extends WebSocketServer {
             return "fact-" + idGenerator.get();
         }
 
-        private double calculateDerivedPriority(Set<String> supportIds, double basePriority) {
-            if (supportIds.isEmpty()) return basePriority;
-            double minSupportPriority = supportIds.stream().map(kb::getAssertion).flatMap(Optional::stream).mapToDouble(Assertion::priority).min().orElse(basePriority);
-            return minSupportPriority * 0.95; // Simple decay heuristic
+        private double calculateDerivedPri(Set<String> supportIds, double basePri) {
+            if (supportIds.isEmpty()) return basePri;
+            double minSupportPri = supportIds.stream().map(kb::getAssertion).flatMap(Optional::stream).mapToDouble(Assertion::pri).min().orElse(basePri);
+            return minSupportPri * 0.95; // Simple decay heuristic
         }
 
-        private double calculateTaskPriority(double p1, double p2) {
+        private double calculateTaskPri(double p1, double p2) {
             return (p1 + p2) / 2.0;
-        } // Average priority
+        } // Average pri
 
         private String findCommonSourceNodeId(Set<String> supportIds) {
             if (supportIds == null || supportIds.isEmpty()) return null;
@@ -1724,25 +1730,26 @@ public class CogNote extends WebSocketServer {
                         if (first) {
                             commonId = assertion.sourceNoteId();
                             first = false;
-                        } else if (!commonId.equals(assertion.sourceNoteId())) return null; // Diverged
+                        } else if (!commonId.equals(assertion.sourceNoteId())) 
+                            return null; // Diverged
                     } else if (!assertion.support().isEmpty() && Collections.disjoint(assertion.support(), visited)) {
                         assertion.support().forEach(supId -> {
                             if (visited.add(supId)) toCheck.offer(supId);
                         });
                     } else if (assertion.support().isEmpty() && !first)
                         return null; // Reached root without note ID after finding one
-                } else return null; // Support assertion missing
+                } else 
+                    return null; // Support assertion missing
             }
             return commonId;
         }
 
-        record MatchResult(Map<KifVar, KifTerm> bindings, Set<String> supportIds) {
-        }
+        record MatchResult(Map<KifVar, KifTerm> bindings, Set<String> supportIds) { }
     }
 
     // --- KIF Parser ---
     static class KifParser {
-        private Reader reader;
+        private final Reader reader;
         private int currentChar = -2;
         private int line = 1;
         private int col = 0;
@@ -1891,48 +1898,57 @@ public class CogNote extends WebSocketServer {
         }
     }
 
-    // --- Unification & Rewriting Logic ---
     static class Unifier {
         private static final int MAX_SUBST_DEPTH = 50;
 
         static Map<KifVar, KifTerm> unify(KifTerm x, KifTerm y, Map<KifVar, KifTerm> bindings) {
-            return unifyRecursive(x, y, bindings);
+            return _unify(x, y, bindings);
         }
 
         static Map<KifVar, KifTerm> match(KifTerm pattern, KifTerm term, Map<KifVar, KifTerm> bindings) {
             return matchRecursive(pattern, term, bindings);
         }
 
-        static KifTerm substitute(KifTerm term, Map<KifVar, KifTerm> bindings) {
-            return fullySubstitute(term, bindings);
+        static KifTerm subst(KifTerm term, Map<KifVar, KifTerm> bindings) {
+            return substFully(term, bindings);
         }
 
         static Optional<KifTerm> rewrite(KifTerm target, KifTerm lhsPattern, KifTerm rhsTemplate) {
             return rewriteRecursive(target, lhsPattern, rhsTemplate);
         }
 
-        private static Map<KifVar, KifTerm> unifyRecursive(KifTerm x, KifTerm y, Map<KifVar, KifTerm> bindings) {
+        private static Map<KifVar, KifTerm> _unify(KifTerm x, KifTerm y, Map<KifVar, KifTerm> bindings) {
+            if (x == y)
+                return bindings;
             if (bindings == null) return null;
-            var xSubst = fullySubstitute(x, bindings);
-            var ySubst = fullySubstitute(y, bindings);
+            var xSubst = substFully(x, bindings);
+            var ySubst = substFully(y, bindings);
             if (xSubst.equals(ySubst)) return bindings;
-            if (xSubst instanceof KifVar varX) return bindVariable(varX, ySubst, bindings, true);
-            if (ySubst instanceof KifVar varY) return bindVariable(varY, xSubst, bindings, true);
-            if (xSubst instanceof KifList lx && ySubst instanceof KifList ly && lx.size() == ly.size()) {
-                var current = bindings;
-                for (int i = 0; i < lx.size(); i++) {
-                    current = unifyRecursive(lx.get(i), ly.get(i), current);
-                    if (current == null) return null;
-                }
-                return current;
+            if (xSubst instanceof KifVar varX) return bind(varX, ySubst, bindings, true);
+            if (ySubst instanceof KifVar varY) return bind(varY, xSubst, bindings, true);
+            if (xSubst instanceof KifList lx && ySubst instanceof KifList ly) {
+                return unifyList(bindings, lx, ly);
             }
             return null;
         }
 
+        private static @Nullable Map<KifVar, KifTerm> unifyList(Map<KifVar, KifTerm> bindings, KifList lx, KifList ly) {
+            var s = lx.size();
+            if (s == ly.size()) {
+                var current = bindings;
+                for (int i = 0; i < s; i++) {
+                    current = _unify(lx.get(i), ly.get(i), current);
+                    if (current == null) return null;
+                }
+                return current;
+            } else
+                return null;
+        }
+
         private static Map<KifVar, KifTerm> matchRecursive(KifTerm pattern, KifTerm term, Map<KifVar, KifTerm> bindings) {
             if (bindings == null) return null;
-            var patternSubst = fullySubstitute(pattern, bindings);
-            if (patternSubst instanceof KifVar varP) return bindVariable(varP, term, bindings, false);
+            var patternSubst = substFully(pattern, bindings);
+            if (patternSubst instanceof KifVar varP) return bind(varP, term, bindings, false);
             if (patternSubst.equals(term)) return bindings;
             if (patternSubst instanceof KifList lp && term instanceof KifList lt && lp.size() == lt.size()) {
                 var current = bindings;
@@ -1945,7 +1961,7 @@ public class CogNote extends WebSocketServer {
             return null;
         }
 
-        static KifTerm fullySubstitute(KifTerm term, Map<KifVar, KifTerm> bindings) {
+        static KifTerm substFully(KifTerm term, Map<KifVar, KifTerm> bindings) {
             if (bindings.isEmpty() || !term.containsVariable()) return term;
             var current = term;
             for (int depth = 0; depth < MAX_SUBST_DEPTH; depth++) {
@@ -1974,11 +1990,11 @@ public class CogNote extends WebSocketServer {
             };
         }
 
-        private static Map<KifVar, KifTerm> bindVariable(KifVar var, KifTerm value, Map<KifVar, KifTerm> bindings, boolean checkOccurs) {
+        private static Map<KifVar, KifTerm> bind(KifVar var, KifTerm value, Map<KifVar, KifTerm> bindings, boolean checkOccurs) {
             if (var.equals(value)) return bindings;
             if (bindings.containsKey(var))
-                return checkOccurs ? unifyRecursive(bindings.get(var), value, bindings) : matchRecursive(bindings.get(var), value, bindings);
-            var finalValue = (value instanceof KifVar v && bindings.containsKey(v)) ? fullySubstitute(v, bindings) : value;
+                return checkOccurs ? _unify(bindings.get(var), value, bindings) : matchRecursive(bindings.get(var), value, bindings);
+            var finalValue = (value instanceof KifVar v && bindings.containsKey(v)) ? substFully(v, bindings) : value;
             if (checkOccurs && occursCheck(var, finalValue, bindings)) return null;
             Map<KifVar, KifTerm> newBindings = new HashMap<>(bindings);
             newBindings.put(var, finalValue);
@@ -1986,7 +2002,7 @@ public class CogNote extends WebSocketServer {
         }
 
         private static boolean occursCheck(KifVar var, KifTerm term, Map<KifVar, KifTerm> bindings) {
-            var substTerm = fullySubstitute(term, bindings);
+            var substTerm = substFully(term, bindings);
             return switch (substTerm) {
                 case KifVar v -> var.equals(v);
                 case KifList l -> l.terms().stream().anyMatch(t -> occursCheck(var, t, bindings));
@@ -1997,7 +2013,7 @@ public class CogNote extends WebSocketServer {
         private static Optional<KifTerm> rewriteRecursive(KifTerm target, KifTerm lhsPattern, KifTerm rhsTemplate) {
             Map<KifVar, KifTerm> matchBindings = match(lhsPattern, target, Map.of());
             if (matchBindings != null)
-                return Optional.of(fullySubstitute(rhsTemplate, matchBindings)); // Matched at this level
+                return Optional.of(substFully(rhsTemplate, matchBindings)); // Matched at this level
             if (target instanceof KifList targetList) { // Try rewriting subterms
                 boolean changed = false;
                 List<KifTerm> newSubTerms = new ArrayList<>(targetList.size());
@@ -2200,9 +2216,9 @@ public class CogNote extends WebSocketServer {
                         if (processedTerm instanceof KifList pList && !pList.terms.isEmpty() && !isTrivial(pList)) {
                             boolean isEq = pList.getOperator().filter("="::equals).isPresent();
                             int weight = pList.calculateWeight();
-                            double priority = 15.0 / (1.0 + weight);
+                            double pri = 15.0 / (1.0 + weight);
                             boolean isOriented = isEq && pList.size() == 3 && pList.get(1).calculateWeight() > pList.get(2).calculateWeight();
-                            var pa = new PotentialAssertion(pList, priority, Set.of(), "UI-LLM", isEq, isOriented, analyzedNote.id);
+                            var pa = new PotentialAssertion(pList, pri, Set.of(), "UI-LLM", isEq, isOriented, analyzedNote.id);
                             reasoner.submitPotentialAssertion(pa);
                             log.append("Submitted: ").append(pList.toKifString()).append("\n");
                             submitted++;
@@ -2216,7 +2232,7 @@ public class CogNote extends WebSocketServer {
                     }
                 }
                 reasoner.reasonerStatus = String.format("Analyzed '%s': %d submitted, %d skipped", analyzedNote.title, submitted, skipped);
-                derivationTextCache.put(analyzedNote.id, log.toString() + "\n-- Derivations Follow --\n");
+                derivationTextCache.put(analyzedNote.id, log + "\n-- Derivations Follow --\n");
                 derivationView.setText(derivationTextCache.get(analyzedNote.id));
                 derivationView.setCaretPosition(0);
             } catch (ParseException pe) {
@@ -2258,7 +2274,7 @@ public class CogNote extends WebSocketServer {
             if (prefixBase.isEmpty() || prefixBase.equals("_")) prefixBase = note.id;
             var notePrefix = "entity_" + prefixBase + "_";
             variables.forEach(var -> groundingMap.put(var, new KifAtom(notePrefix + var.name().substring(1).replaceAll("[^a-zA-Z0-9_]", ""))));
-            return Unifier.substitute(term, groundingMap);
+            return Unifier.subst(term, groundingMap);
         }
 
         private void togglePause(ActionEvent e) {
@@ -2303,8 +2319,8 @@ public class CogNote extends WebSocketServer {
         }
 
         private void updateDerivationCache(String noteId, String type, Assertion assertion) {
-            String lineSuffix = String.format("[%s]", assertion.id());
-            String fullLine = String.format("Prio=%.3f %s %s", assertion.priority(), assertion.toKifString(), lineSuffix);
+            String lineSuffix = String.format("[%s]", assertion.id);
+            String fullLine = String.format("Prio=%.3f %s %s", assertion.pri, assertion.toKifString(), lineSuffix);
             String currentText = derivationTextCache.computeIfAbsent(noteId, id -> "Derivations for note: " + getNoteTitleById(id) + "\n--------------------\n");
             String newText = currentText;
             switch (type) {
@@ -2318,7 +2334,7 @@ public class CogNote extends WebSocketServer {
         }
 
         private void clearAssertionLineFromAllCaches(Assertion assertion, String type) {
-            String lineSuffix = String.format("[%s]", assertion.id());
+            String lineSuffix = String.format("[%s]", assertion.id);
             String typeMarker = "# " + type.toUpperCase() + ": ";
             derivationTextCache.replaceAll((noteId, text) -> text.lines().map(line -> (line.trim().endsWith(lineSuffix) && !line.trim().startsWith("#")) ? typeMarker + line : line).collect(Collectors.joining("\n")) + "\n");
         }

@@ -1,4 +1,4 @@
-package dumb.cognote;
+package dumb.cognote1;
 
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;

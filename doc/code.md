@@ -28,9 +28,8 @@ Identify Java code-paths that can/should be rewritten as MeTTa script to lead th
    - Introduce helpful abstractions functions, parameters, and classes to share common code  
    - Apply "don't repeat yourself" principles
  - Modular (logically organized, supporting abstraction)
- - Self-documenting
-   - Clear naming and structure
-   - No Comments
+ - Remove all comments, relying only on self-documenting code
+   - Clear naming and structure 
  - Do not rename identifiers. Names are carefully chosen.
  - Use the latest version of the language, APIs, and dependencies
 
