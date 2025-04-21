@@ -13,12 +13,12 @@
  - Modular (logically organized, supporting abstraction)
  - Remove all comments, relying only on self-documenting code
    - Clear naming and structure 
- - Do not rename identifiers. Names are carefully chosen.
  - Use the latest version of the language, APIs, and dependencies
 
 
 - Use @Nullable, but not @NotNull
 - Ensure consistency, and shorten unnecessarily lengthy identifiers.
+- Do not rename identifiers. Names are carefully chosen.
 
 
 
